@@ -1,0 +1,261 @@
+#include <nlib/hive.h>
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <numeric>
+#include <vector>
+
+namespace {
+
+// Iteration order is unspecified, so contents are compared as a sorted copy.
+template <typename T>
+std::vector<T> sorted_elements(const nq::hive<T>& h) {
+  std::vector<T> out(h.begin(), h.end());
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+std::vector<int> iota_vector(int n, int first = 0) {
+  std::vector<int> v(static_cast<std::size_t>(n));
+  std::iota(v.begin(), v.end(), first);
+  return v;
+}
+
+// Counts live instances to check that elements are constructed/destroyed once.
+struct Counted {
+  static int alive;
+  int value;
+
+  explicit Counted(int v) : value(v) { ++alive; }
+  Counted(const Counted& other) : value(other.value) { ++alive; }
+  Counted& operator=(const Counted&) = default;
+  ~Counted() { --alive; }
+};
+int Counted::alive = 0;
+
+TEST(Hive, DefaultConstructedIsEmpty) {
+  nq::hive<int> h;
+  EXPECT_TRUE(h.empty());
+  EXPECT_EQ(h.size(), 0u);
+  EXPECT_EQ(h.begin(), h.end());
+}
+
+TEST(Hive, InsertGrowsSize) {
+  nq::hive<int> h;
+  for (int i = 0; i < 100; ++i) h.insert(i);
+  EXPECT_FALSE(h.empty());
+  EXPECT_EQ(h.size(), 100u);
+  EXPECT_EQ(sorted_elements(h), iota_vector(100));
+}
+
+TEST(Hive, InitializerListHoldsAllElements) {
+  nq::hive<int> h{3, 1, 2};
+  EXPECT_EQ(h.size(), 3u);
+  EXPECT_EQ(sorted_elements(h), (std::vector<int>{1, 2, 3}));
+}
+
+TEST(Hive, EmplaceReturnsIteratorToNewElement) {
+  nq::hive<std::pair<int, int>> h;
+  auto it = h.emplace(1, 2);
+  EXPECT_EQ(it->first, 1);
+  EXPECT_EQ(it->second, 2);
+  EXPECT_EQ(h.size(), 1u);
+}
+
+TEST(Hive, InsertCountCopies) {
+  nq::hive<int> h;
+  h.insert(5, 7);
+  EXPECT_EQ(h.size(), 5u);
+  EXPECT_EQ(sorted_elements(h), (std::vector<int>{7, 7, 7, 7, 7}));
+}
+
+TEST(Hive, EraseRemovesOnlyTheTarget) {
+  nq::hive<int> h;
+  std::vector<nq::hive<int>::iterator> its;
+  for (int i = 0; i < 20; ++i) its.push_back(h.insert(i));
+
+  h.erase(its[7]);
+  EXPECT_EQ(h.size(), 19u);
+
+  std::vector<int> expected = iota_vector(20);
+  expected.erase(expected.begin() + 7);
+  EXPECT_EQ(sorted_elements(h), expected);
+}
+
+TEST(Hive, EraseReturnsFollowingIterator) {
+  nq::hive<int> h;
+  for (int i = 0; i < 30; ++i) h.insert(i);
+
+  auto it = h.begin();
+  ++it;
+  auto expected = it;
+  ++expected;
+  EXPECT_EQ(h.erase(it), expected);
+  EXPECT_EQ(h.size(), 29u);
+}
+
+TEST(Hive, EraseEveryOtherElementKeepsIterationConsistent) {
+  nq::hive<int> h;
+  for (int i = 0; i < 200; ++i) h.insert(i);
+
+  for (auto it = h.begin(); it != h.end();) {
+    if (*it % 2 == 0)
+      it = h.erase(it);
+    else
+      ++it;
+  }
+
+  EXPECT_EQ(h.size(), 100u);
+  for (int v : h) EXPECT_EQ(v % 2, 1);
+  EXPECT_EQ(std::distance(h.begin(), h.end()), 100);
+}
+
+TEST(Hive, EraseRangeClearsAll) {
+  nq::hive<int> h;
+  for (int i = 0; i < 50; ++i) h.insert(i);
+  EXPECT_EQ(h.erase(h.begin(), h.end()), h.end());
+  EXPECT_TRUE(h.empty());
+  EXPECT_EQ(h.begin(), h.end());
+}
+
+TEST(Hive, InsertReusesErasedSlots) {
+  nq::hive<int> h;
+  for (int i = 0; i < 64; ++i) h.insert(i);
+  const auto capacity_before = h.capacity();
+
+  for (auto it = h.begin(); it != h.end();) it = (*it % 2 == 0) ? h.erase(it) : std::next(it);
+  for (int i = 0; i < 32; ++i) h.insert(1000 + i);
+
+  EXPECT_EQ(h.size(), 64u);
+  EXPECT_EQ(h.capacity(), capacity_before);
+}
+
+TEST(Hive, ElementAddressesAreStableAcrossInserts) {
+  nq::hive<int> h;
+  std::vector<int*> addresses;
+  for (int i = 0; i < 100; ++i) addresses.push_back(&*h.insert(i));
+  for (int i = 0; i < 100; ++i) EXPECT_EQ(*addresses[static_cast<std::size_t>(i)], i);
+}
+
+TEST(Hive, ReverseIterationVisitsAllElements) {
+  nq::hive<int> h;
+  for (int i = 0; i < 40; ++i) h.insert(i);
+
+  std::vector<int> reversed(h.rbegin(), h.rend());
+  ASSERT_EQ(reversed.size(), 40u);
+  std::vector<int> forward(h.begin(), h.end());
+  std::reverse(forward.begin(), forward.end());
+  EXPECT_EQ(reversed, forward);
+}
+
+TEST(Hive, ClearKeepsCapacity) {
+  nq::hive<int> h;
+  for (int i = 0; i < 100; ++i) h.insert(i);
+  const auto capacity_before = h.capacity();
+
+  h.clear();
+  EXPECT_TRUE(h.empty());
+  EXPECT_EQ(h.capacity(), capacity_before);
+
+  h.insert(1);
+  EXPECT_EQ(h.size(), 1u);
+  EXPECT_EQ(h.capacity(), capacity_before);
+}
+
+TEST(Hive, ReserveAndTrimCapacity) {
+  nq::hive<int> h;
+  h.reserve(100);
+  EXPECT_GE(h.capacity(), 100u);
+  EXPECT_TRUE(h.empty());
+
+  h.trim_capacity();
+  EXPECT_EQ(h.capacity(), 0u);
+}
+
+TEST(Hive, CopyConstructAndAssign) {
+  nq::hive<int> h;
+  for (int i = 0; i < 30; ++i) h.insert(i);
+
+  nq::hive<int> copy(h);
+  EXPECT_EQ(copy.size(), h.size());
+  EXPECT_EQ(sorted_elements(copy), sorted_elements(h));
+
+  nq::hive<int> assigned;
+  assigned.insert(99);
+  assigned = h;
+  EXPECT_EQ(sorted_elements(assigned), sorted_elements(h));
+}
+
+TEST(Hive, MoveConstructAndAssign) {
+  nq::hive<int> h;
+  for (int i = 0; i < 30; ++i) h.insert(i);
+
+  nq::hive<int> moved(std::move(h));
+  EXPECT_EQ(moved.size(), 30u);
+  EXPECT_EQ(sorted_elements(moved), iota_vector(30));
+
+  nq::hive<int> assigned;
+  assigned = std::move(moved);
+  EXPECT_EQ(assigned.size(), 30u);
+  EXPECT_EQ(sorted_elements(assigned), iota_vector(30));
+}
+
+TEST(Hive, SwapExchangesContents) {
+  nq::hive<int> a{1, 2, 3};
+  nq::hive<int> b{9};
+
+  swap(a, b);
+  EXPECT_EQ(sorted_elements(a), (std::vector<int>{9}));
+  EXPECT_EQ(sorted_elements(b), (std::vector<int>{1, 2, 3}));
+}
+
+TEST(Hive, GetIteratorRecoversElement) {
+  nq::hive<int> h;
+  for (int i = 0; i < 20; ++i) h.insert(i);
+
+  auto it = h.begin();
+  std::advance(it, 5);
+  EXPECT_EQ(h.get_iterator(&*it), it);
+
+  const int outside = 0;
+  EXPECT_EQ(h.get_iterator(&outside), h.end());
+}
+
+TEST(Hive, GetIteratorReturnsEndForErasedSlot) {
+  nq::hive<int> h;
+  auto it = h.insert(42);
+  const int* p = &*it;
+  h.erase(it);
+  EXPECT_EQ(h.get_iterator(p), h.end());
+}
+
+TEST(Hive, ElementsAreDestroyedExactlyOnce) {
+  ASSERT_EQ(Counted::alive, 0);
+  {
+    nq::hive<Counted> h;
+    for (int i = 0; i < 50; ++i) h.emplace(i);
+    EXPECT_EQ(Counted::alive, 50);
+
+    h.erase(h.begin());
+    EXPECT_EQ(Counted::alive, 49);
+
+    h.clear();
+    EXPECT_EQ(Counted::alive, 0);
+
+    for (int i = 0; i < 10; ++i) h.emplace(i);
+    EXPECT_EQ(Counted::alive, 10);
+  }
+  EXPECT_EQ(Counted::alive, 0);
+}
+
+TEST(Hive, ConstIterationCoversAllElements) {
+  nq::hive<int> h;
+  for (int i = 0; i < 25; ++i) h.insert(i);
+
+  const auto& ch = h;
+  EXPECT_EQ(std::distance(ch.cbegin(), ch.cend()), 25);
+  EXPECT_EQ(std::accumulate(ch.begin(), ch.end(), 0), 300);
+}
+
+}  // namespace
