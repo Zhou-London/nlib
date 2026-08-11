@@ -12,34 +12,36 @@
 
 namespace nq {
 
-// Minimal C++26 std::hive (P0447).
-//
-// Storage: a pool of geometrically growing blocks, each a single allocation
-// holding header + slot array + skipfield array. Erased slots are tracked by
-// a low-complexity jump-counting skipfield (as in the reference std::hive):
-//
-//   skipfield[i] == 0        -> slot i holds an element
-//   run of erased slots [s,e] of length N -> skipfield[s] == skipfield[e] == N;
-//   interior values are never read (any lookup lands on a run head, a run
-//   tail, or an occupied slot).
-//
-// Forward iteration can only step from an occupied slot onto a run head, so
-// `i += skipfield[i]` jumps the whole run in O(1); reverse iteration lands on
-// run tails and uses `i -= skipfield[i]`. Erase splices/merges runs with O(1)
-// skipfield writes.
-//
-// Reuse: each block keeps a doubly linked free list of runs ("skipblocks"),
-// with list nodes stored in the element memory of each run's head slot.
-// Blocks that contain holes are chained globally. Insert takes, in order: the
-// head slot of the first skipblock of the first holey block, then the tail
-// block's untouched region, then a new block.
+// Minimal C++26 std::hive (P0447): unordered element pool with O(1) insert
+// and erase.
 //
 // Guarantees, matching std::hive:
 //  - element addresses are stable for their lifetime; insert/erase never move
 //    existing elements;
 //  - insert invalidates no iterators; erase invalidates only iterators to the
 //    erased element;
-//  - iteration order is unspecified (block order, slot order within a block).
+//  - iteration order is unspecified.
+// Thread-compatible: concurrent const access is safe; writes need external
+// synchronization.
+//
+// Storage is a chain of geometrically growing blocks, each a single
+// allocation holding header + slot array + skipfield. Erased slots are
+// tracked as jump-counting runs:
+//
+//   skipfield[i] == 0                      -> slot i holds an element;
+//   erased run [s, e] of length N          -> skipfield[s] == skipfield[e] == N.
+//
+// Interior run values are never read: every lookup lands on a run head, a run
+// tail, or an occupied slot. Forward iteration only steps onto run heads, so
+// `i += skipfield[i]` jumps a whole run in O(1); reverse iteration lands on
+// run tails and uses `i -= skipfield[i]`. Erase splices and merges runs with
+// O(1) skipfield writes.
+//
+// Each block keeps a doubly linked free list of erased runs ("skipblocks"),
+// nodes stored in the element memory of each run's head slot; blocks that
+// contain holes are chained globally. Insert takes, in order: the head slot
+// of the first holey block's first skipblock, then the tail block's untouched
+// region, then a new block.
 template <typename T>
 class hive {
   using skip_t = std::uint16_t;
@@ -247,6 +249,8 @@ class hive {
   size_type capacity() const noexcept { return capacity_; }
   size_type max_size() const noexcept { return static_cast<size_type>(-1) / sizeof(T); }
 
+  // Grows capacity() to at least `n` by stocking spare blocks; existing
+  // elements and iterators are unaffected.
   void reserve(size_type n) {
     while (capacity_ < n) {
       block_type* b = allocate_block(next_block_capacity());
@@ -290,7 +294,7 @@ class hive {
       b->skipfield[idx] = 0;
       if (run > 1) {  // run shrinks to [idx+1, idx+run-1]; free-list node moves with its head
         b->skipfield[idx + 1] = b->skipfield[idx + run - 1] = static_cast<skip_t>(run - 1);
-        b->slots[idx + 1].links = ln;  // ln.prev == npos: we took the list head
+        b->slots[idx + 1].links = ln;  // ln.prev == npos: idx was the list head
         if (ln.next != npos) b->slots[ln.next].links.prev = static_cast<skip_t>(idx + 1);
         b->free_head = static_cast<skip_t>(idx + 1);
       } else {  // skipblock exhausted; unlink it
@@ -415,8 +419,8 @@ class hive {
     std::swap(capacity_, other.capacity_);
   }
 
-  // ---- hive-specific: recover an iterator from an element pointer (end() if not found) ----
-
+  // Returns an iterator to `*p`, or end() if `p` does not point at a live
+  // element of this hive. O(number of blocks).
   iterator get_iterator(const_pointer p) noexcept {
     auto [b, idx] = locate(p);
     return b ? iterator(this, b, idx) : end();
@@ -511,6 +515,8 @@ class hive {
     b->next_erased = b->prev_erased = nullptr;
   }
 
+  // Maps `p` to its (block, slot index); {nullptr, 0} when `p` is not a live
+  // element.
   std::pair<block_type*, std::size_t> locate(const_pointer p) const noexcept {
     const auto addr = reinterpret_cast<std::uintptr_t>(p);
     for (block_type* b = head_; b; b = b->next) {
