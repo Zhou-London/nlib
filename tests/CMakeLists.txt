@@ -17,3 +17,7 @@ gtest_discover_tests(hive_test)
 add_executable(single_queue_test single_queue_test.cpp)
 target_link_libraries(single_queue_test PRIVATE nlib::nlib GTest::gtest_main)
 gtest_discover_tests(single_queue_test)
+
+add_executable(vector_test vector_test.cpp)
+target_link_libraries(vector_test PRIVATE nlib::nlib GTest::gtest_main)
+gtest_discover_tests(vector_test)
