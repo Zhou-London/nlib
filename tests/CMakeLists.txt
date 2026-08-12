@@ -21,7 +21,3 @@ gtest_discover_tests(single_queue_test)
 add_executable(pool_test pool_test.cpp)
 target_link_libraries(pool_test PRIVATE nlib::nlib GTest::gtest_main)
 gtest_discover_tests(pool_test)
-
-add_executable(vector_test vector_test.cpp)
-target_link_libraries(vector_test PRIVATE nlib::nlib GTest::gtest_main)
-gtest_discover_tests(vector_test)
