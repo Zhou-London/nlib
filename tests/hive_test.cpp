@@ -149,28 +149,18 @@ TEST(Hive, ReverseIterationVisitsAllElements) {
   EXPECT_EQ(reversed, forward);
 }
 
-TEST(Hive, ClearKeepsCapacity) {
+TEST(Hive, ClearFreesStorage) {
   nq::hive<int> h;
   for (int i = 0; i < 100; ++i) h.insert(i);
-  const auto capacity_before = h.capacity();
+  EXPECT_GT(h.capacity(), 0u);
 
   h.clear();
   EXPECT_TRUE(h.empty());
-  EXPECT_EQ(h.capacity(), capacity_before);
+  EXPECT_EQ(h.capacity(), 0u);
 
   h.insert(1);
   EXPECT_EQ(h.size(), 1u);
-  EXPECT_EQ(h.capacity(), capacity_before);
-}
-
-TEST(Hive, ReserveAndTrimCapacity) {
-  nq::hive<int> h;
-  h.reserve(100);
-  EXPECT_GE(h.capacity(), 100u);
-  EXPECT_TRUE(h.empty());
-
-  h.trim_capacity();
-  EXPECT_EQ(h.capacity(), 0u);
+  EXPECT_EQ(sorted_elements(h), (std::vector<int>{1}));
 }
 
 TEST(Hive, CopyConstructAndAssign) {

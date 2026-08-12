@@ -181,7 +181,7 @@ class hive {
     try {
       for (const T& v : il) emplace(v);
     } catch (...) {
-      destroy_all();
+      clear();
       throw;
     }
   }
@@ -190,7 +190,7 @@ class hive {
     try {
       for (const T& v : other) emplace(v);
     } catch (...) {
-      destroy_all();
+      clear();
       throw;
     }
   }
@@ -207,13 +207,13 @@ class hive {
 
   hive& operator=(hive&& other) noexcept {
     if (this != &other) {
-      destroy_all();
+      clear();
       steal(other);
     }
     return *this;
   }
 
-  ~hive() { destroy_all(); }
+  ~hive() { clear(); }
 
   // ---- iterators ----
 
@@ -248,25 +248,6 @@ class hive {
   size_type size() const noexcept { return size_; }
   size_type capacity() const noexcept { return capacity_; }
   size_type max_size() const noexcept { return static_cast<size_type>(-1) / sizeof(T); }
-
-  // Grows capacity() to at least `n` by stocking spare blocks; existing
-  // elements and iterators are unaffected.
-  void reserve(size_type n) {
-    while (capacity_ < n) {
-      block_type* b = allocate_block(next_block_capacity());
-      b->next = reserved_head_;
-      reserved_head_ = b;
-    }
-  }
-
-  // Frees all spare blocks (left by clear/reserve); stored elements are untouched.
-  void trim_capacity() noexcept {
-    while (reserved_head_) {
-      block_type* b = reserved_head_;
-      reserved_head_ = b->next;
-      deallocate_block(b);
-    }
-  }
 
   // ---- modifiers ----
 
@@ -309,14 +290,7 @@ class hive {
       return iterator(this, b, idx);
     }
     if (!tail_ || tail_->high_water == tail_->capacity) {  // 2) need a fresh block
-      block_type* nb;
-      if (reserved_head_) {
-        nb = reserved_head_;
-        reserved_head_ = nb->next;
-        nb->next = nullptr;
-      } else {
-        nb = allocate_block(next_block_capacity());
-      }
+      block_type* nb = allocate_block(next_block_capacity());
       nb->prev = tail_;
       if (tail_)
         tail_->next = nb;
@@ -381,8 +355,7 @@ class hive {
     return iterator(this, last.blk_, last.idx_);
   }
 
-  // Destroys all elements but keeps capacity (blocks move to the spare list),
-  // matching std::hive::clear semantics.
+  // Destroys all elements and frees all storage.
   void clear() noexcept {
     block_type* b = head_;
     while (b) {
@@ -396,14 +369,7 @@ class hive {
           i += skip;
         }
       }
-      std::memset(b->skipfield, 0, b->capacity * sizeof(skip_t));
-      b->free_head = npos;
-      b->high_water = 0;
-      b->active = 0;
-      b->prev = nullptr;
-      b->next_erased = b->prev_erased = nullptr;
-      b->next = reserved_head_;
-      reserved_head_ = b;
+      deallocate_block(b);
       b = next;
     }
     head_ = tail_ = erased_head_ = nullptr;
@@ -414,7 +380,6 @@ class hive {
     std::swap(head_, other.head_);
     std::swap(tail_, other.tail_);
     std::swap(erased_head_, other.erased_head_);
-    std::swap(reserved_head_, other.reserved_head_);
     std::swap(size_, other.size_);
     std::swap(capacity_, other.capacity_);
   }
@@ -437,10 +402,10 @@ class hive {
   static constexpr std::size_t block_align =
       alignof(block_type) > alignof(slot_type) ? alignof(block_type) : alignof(slot_type);
 
+  // Each new block doubles total capacity, clamped to [min, max].
   std::size_t next_block_capacity() const noexcept {
-    if (!tail_) return min_block_capacity;
-    const std::size_t c = tail_->capacity * 2;
-    return c > max_block_capacity ? max_block_capacity : c;
+    if (capacity_ < min_block_capacity) return min_block_capacity;
+    return capacity_ > max_block_capacity ? max_block_capacity : capacity_;
   }
 
   // Header, slot array and skipfield share one allocation.
@@ -535,20 +500,13 @@ class hive {
     head_ = std::exchange(other.head_, nullptr);
     tail_ = std::exchange(other.tail_, nullptr);
     erased_head_ = std::exchange(other.erased_head_, nullptr);
-    reserved_head_ = std::exchange(other.reserved_head_, nullptr);
     size_ = std::exchange(other.size_, 0);
     capacity_ = std::exchange(other.capacity_, 0);
   }
 
-  void destroy_all() noexcept {
-    clear();
-    trim_capacity();
-  }
-
   block_type* head_ = nullptr;
   block_type* tail_ = nullptr;
-  block_type* erased_head_ = nullptr;    // blocks containing holes
-  block_type* reserved_head_ = nullptr;  // spare empty blocks (from reserve/clear), singly linked
+  block_type* erased_head_ = nullptr;  // blocks containing holes
   size_type size_ = 0;
   size_type capacity_ = 0;
 };
