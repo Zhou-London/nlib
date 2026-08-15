@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <new>
@@ -21,6 +20,7 @@ namespace nq {
 //  - insert invalidates no iterators; erase invalidates only iterators to the
 //    erased element;
 //  - iteration order is unspecified.
+// Elements enter only by move or in-place construction; not copyable.
 // Thread-compatible: concurrent const access is safe; writes need external
 // synchronization.
 //
@@ -177,33 +177,10 @@ class hive {
 
   hive() noexcept = default;
 
-  hive(std::initializer_list<T> il) : hive() {
-    try {
-      for (const T& v : il) emplace(v);
-    } catch (...) {
-      clear();
-      throw;
-    }
-  }
-
-  hive(const hive& other) : hive() {
-    try {
-      for (const T& v : other) emplace(v);
-    } catch (...) {
-      clear();
-      throw;
-    }
-  }
+  hive(const hive&) = delete;
+  hive& operator=(const hive&) = delete;
 
   hive(hive&& other) noexcept { steal(other); }
-
-  hive& operator=(const hive& other) {
-    if (this != &other) {
-      hive tmp(other);
-      swap(tmp);
-    }
-    return *this;
-  }
 
   hive& operator=(hive&& other) noexcept {
     if (this != &other) {
@@ -251,12 +228,7 @@ class hive {
 
   // ---- modifiers ----
 
-  iterator insert(const T& value) { return emplace(value); }
   iterator insert(T&& value) { return emplace(std::move(value)); }
-
-  void insert(size_type count, const T& value) {
-    for (size_type i = 0; i < count; ++i) emplace(value);
-  }
 
   template <typename... Args>
   iterator emplace(Args&&... args) {

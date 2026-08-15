@@ -65,7 +65,6 @@ class single_queue {
   }
 
   // On failure the argument is left unmoved.
-  bool try_push(const T& value) { return try_emplace(value); }
   bool try_push(T&& value) { return try_emplace(std::move(value)); }
 
   // Removes and returns the front element, or std::nullopt if the queue is

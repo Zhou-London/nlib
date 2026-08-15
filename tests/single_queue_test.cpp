@@ -13,7 +13,6 @@ struct Counted {
   int value;
 
   explicit Counted(int v) : value(v) { ++alive; }
-  Counted(const Counted& other) : value(other.value) { ++alive; }
   Counted(Counted&& other) noexcept : value(other.value) { ++alive; }
   ~Counted() { --alive; }
 };
@@ -36,14 +35,14 @@ TEST(SingleQueue, CapacityRoundsUpToPowerOfTwo) {
 
 TEST(SingleQueue, PopsInFifoOrder) {
   nq::single_queue<int> q(8);
-  for (int i = 0; i < 8; ++i) EXPECT_TRUE(q.try_push(i));
+  for (int i = 0; i < 8; ++i) EXPECT_TRUE(q.try_emplace(i));
   for (int i = 0; i < 8; ++i) EXPECT_EQ(q.try_pop(), i);
   EXPECT_TRUE(q.empty());
 }
 
 TEST(SingleQueue, TryPushFailsWhenFull) {
   nq::single_queue<int> q(4);
-  for (int i = 0; i < 4; ++i) EXPECT_TRUE(q.try_push(i));
+  for (int i = 0; i < 4; ++i) EXPECT_TRUE(q.try_emplace(i));
   EXPECT_FALSE(q.try_push(99));
   EXPECT_EQ(q.size(), 4u);
   EXPECT_EQ(q.try_pop(), 0);
@@ -63,7 +62,7 @@ TEST(SingleQueue, FailedPushLeavesMoveOnlyArgumentIntact) {
 TEST(SingleQueue, WrapAroundManyTimes) {
   nq::single_queue<int> q(4);
   for (int i = 0; i < 1000; ++i) {
-    ASSERT_TRUE(q.try_push(i));
+    ASSERT_TRUE(q.try_emplace(i));
     ASSERT_EQ(q.try_pop(), i);
   }
   EXPECT_TRUE(q.empty());
@@ -88,7 +87,7 @@ TEST(SingleQueue, SpscStressPreservesOrderAndValues) {
 
   std::thread producer([&q] {
     for (int i = 0; i < n; ++i)
-      while (!q.try_push(i)) std::this_thread::yield();
+      while (!q.try_emplace(i)) std::this_thread::yield();
   });
 
   int expected = 0;

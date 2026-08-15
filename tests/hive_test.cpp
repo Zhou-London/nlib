@@ -3,7 +3,10 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <memory>
 #include <numeric>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -28,11 +31,12 @@ struct Counted {
   int value;
 
   explicit Counted(int v) : value(v) { ++alive; }
-  Counted(const Counted& other) : value(other.value) { ++alive; }
-  Counted& operator=(const Counted&) = default;
   ~Counted() { --alive; }
 };
 int Counted::alive = 0;
+
+static_assert(!std::is_copy_constructible_v<nq::hive<int>>);
+static_assert(!std::is_copy_assignable_v<nq::hive<int>>);
 
 TEST(Hive, DefaultConstructedIsEmpty) {
   nq::hive<int> h;
@@ -43,16 +47,18 @@ TEST(Hive, DefaultConstructedIsEmpty) {
 
 TEST(Hive, InsertGrowsSize) {
   nq::hive<int> h;
-  for (int i = 0; i < 100; ++i) h.insert(i);
+  for (int i = 0; i < 100; ++i) h.emplace(i);
   EXPECT_FALSE(h.empty());
   EXPECT_EQ(h.size(), 100u);
   EXPECT_EQ(sorted_elements(h), iota_vector(100));
 }
 
-TEST(Hive, InitializerListHoldsAllElements) {
-  nq::hive<int> h{3, 1, 2};
-  EXPECT_EQ(h.size(), 3u);
-  EXPECT_EQ(sorted_elements(h), (std::vector<int>{1, 2, 3}));
+TEST(Hive, InsertMovesValue) {
+  nq::hive<std::unique_ptr<int>> h;
+  auto p = std::make_unique<int>(7);
+  auto it = h.insert(std::move(p));
+  EXPECT_EQ(p, nullptr);
+  EXPECT_EQ(**it, 7);
 }
 
 TEST(Hive, EmplaceReturnsIteratorToNewElement) {
@@ -63,17 +69,10 @@ TEST(Hive, EmplaceReturnsIteratorToNewElement) {
   EXPECT_EQ(h.size(), 1u);
 }
 
-TEST(Hive, InsertCountCopies) {
-  nq::hive<int> h;
-  h.insert(5, 7);
-  EXPECT_EQ(h.size(), 5u);
-  EXPECT_EQ(sorted_elements(h), (std::vector<int>{7, 7, 7, 7, 7}));
-}
-
 TEST(Hive, EraseRemovesOnlyTheTarget) {
   nq::hive<int> h;
   std::vector<nq::hive<int>::iterator> its;
-  for (int i = 0; i < 20; ++i) its.push_back(h.insert(i));
+  for (int i = 0; i < 20; ++i) its.push_back(h.emplace(i));
 
   h.erase(its[7]);
   EXPECT_EQ(h.size(), 19u);
@@ -85,7 +84,7 @@ TEST(Hive, EraseRemovesOnlyTheTarget) {
 
 TEST(Hive, EraseReturnsFollowingIterator) {
   nq::hive<int> h;
-  for (int i = 0; i < 30; ++i) h.insert(i);
+  for (int i = 0; i < 30; ++i) h.emplace(i);
 
   auto it = h.begin();
   ++it;
@@ -97,7 +96,7 @@ TEST(Hive, EraseReturnsFollowingIterator) {
 
 TEST(Hive, EraseEveryOtherElementKeepsIterationConsistent) {
   nq::hive<int> h;
-  for (int i = 0; i < 200; ++i) h.insert(i);
+  for (int i = 0; i < 200; ++i) h.emplace(i);
 
   for (auto it = h.begin(); it != h.end();) {
     if (*it % 2 == 0)
@@ -113,7 +112,7 @@ TEST(Hive, EraseEveryOtherElementKeepsIterationConsistent) {
 
 TEST(Hive, EraseRangeClearsAll) {
   nq::hive<int> h;
-  for (int i = 0; i < 50; ++i) h.insert(i);
+  for (int i = 0; i < 50; ++i) h.emplace(i);
   EXPECT_EQ(h.erase(h.begin(), h.end()), h.end());
   EXPECT_TRUE(h.empty());
   EXPECT_EQ(h.begin(), h.end());
@@ -121,11 +120,11 @@ TEST(Hive, EraseRangeClearsAll) {
 
 TEST(Hive, InsertReusesErasedSlots) {
   nq::hive<int> h;
-  for (int i = 0; i < 64; ++i) h.insert(i);
+  for (int i = 0; i < 64; ++i) h.emplace(i);
   const auto capacity_before = h.capacity();
 
   for (auto it = h.begin(); it != h.end();) it = (*it % 2 == 0) ? h.erase(it) : std::next(it);
-  for (int i = 0; i < 32; ++i) h.insert(1000 + i);
+  for (int i = 0; i < 32; ++i) h.emplace(1000 + i);
 
   EXPECT_EQ(h.size(), 64u);
   EXPECT_EQ(h.capacity(), capacity_before);
@@ -134,13 +133,13 @@ TEST(Hive, InsertReusesErasedSlots) {
 TEST(Hive, ElementAddressesAreStableAcrossInserts) {
   nq::hive<int> h;
   std::vector<int*> addresses;
-  for (int i = 0; i < 100; ++i) addresses.push_back(&*h.insert(i));
+  for (int i = 0; i < 100; ++i) addresses.push_back(&*h.emplace(i));
   for (int i = 0; i < 100; ++i) EXPECT_EQ(*addresses[static_cast<std::size_t>(i)], i);
 }
 
 TEST(Hive, ReverseIterationVisitsAllElements) {
   nq::hive<int> h;
-  for (int i = 0; i < 40; ++i) h.insert(i);
+  for (int i = 0; i < 40; ++i) h.emplace(i);
 
   std::vector<int> reversed(h.rbegin(), h.rend());
   ASSERT_EQ(reversed.size(), 40u);
@@ -151,7 +150,7 @@ TEST(Hive, ReverseIterationVisitsAllElements) {
 
 TEST(Hive, ClearFreesStorage) {
   nq::hive<int> h;
-  for (int i = 0; i < 100; ++i) h.insert(i);
+  for (int i = 0; i < 100; ++i) h.emplace(i);
   EXPECT_GT(h.capacity(), 0u);
 
   h.clear();
@@ -163,23 +162,9 @@ TEST(Hive, ClearFreesStorage) {
   EXPECT_EQ(sorted_elements(h), (std::vector<int>{1}));
 }
 
-TEST(Hive, CopyConstructAndAssign) {
-  nq::hive<int> h;
-  for (int i = 0; i < 30; ++i) h.insert(i);
-
-  nq::hive<int> copy(h);
-  EXPECT_EQ(copy.size(), h.size());
-  EXPECT_EQ(sorted_elements(copy), sorted_elements(h));
-
-  nq::hive<int> assigned;
-  assigned.insert(99);
-  assigned = h;
-  EXPECT_EQ(sorted_elements(assigned), sorted_elements(h));
-}
-
 TEST(Hive, MoveConstructAndAssign) {
   nq::hive<int> h;
-  for (int i = 0; i < 30; ++i) h.insert(i);
+  for (int i = 0; i < 30; ++i) h.emplace(i);
 
   nq::hive<int> moved(std::move(h));
   EXPECT_EQ(moved.size(), 30u);
@@ -192,8 +177,10 @@ TEST(Hive, MoveConstructAndAssign) {
 }
 
 TEST(Hive, SwapExchangesContents) {
-  nq::hive<int> a{1, 2, 3};
-  nq::hive<int> b{9};
+  nq::hive<int> a;
+  for (int v : {1, 2, 3}) a.emplace(v);
+  nq::hive<int> b;
+  b.emplace(9);
 
   swap(a, b);
   EXPECT_EQ(sorted_elements(a), (std::vector<int>{9}));
@@ -202,7 +189,7 @@ TEST(Hive, SwapExchangesContents) {
 
 TEST(Hive, GetIteratorRecoversElement) {
   nq::hive<int> h;
-  for (int i = 0; i < 20; ++i) h.insert(i);
+  for (int i = 0; i < 20; ++i) h.emplace(i);
 
   auto it = h.begin();
   std::advance(it, 5);
@@ -241,7 +228,7 @@ TEST(Hive, ElementsAreDestroyedExactlyOnce) {
 
 TEST(Hive, ConstIterationCoversAllElements) {
   nq::hive<int> h;
-  for (int i = 0; i < 25; ++i) h.insert(i);
+  for (int i = 0; i < 25; ++i) h.emplace(i);
 
   const auto& ch = h;
   EXPECT_EQ(std::distance(ch.cbegin(), ch.cend()), 25);
