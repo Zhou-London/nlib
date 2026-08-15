@@ -21,6 +21,8 @@ struct order {
   std::int64_t price;     // fixed-point, 1/price_scale of the quote unit
   std::int64_t qty;       // trading units; for order_action::cancel, the cancelled quantity
   std::int64_t time_ns;   // Unix-epoch nanoseconds
+  order* prev;            // intrusive list hooks for book keeping; not wire data
+  order* next;
   std::uint32_t instrument_id;  // mapping is application-defined
   side side;
   order_type type;
