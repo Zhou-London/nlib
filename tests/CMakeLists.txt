@@ -22,6 +22,14 @@ add_executable(memory_pool_test memory_pool_test.cpp)
 target_link_libraries(memory_pool_test PRIVATE nlib::nlib GTest::gtest_main)
 gtest_discover_tests(memory_pool_test)
 
+# Benchmark, not a test: run manually from an optimized build.
+add_executable(map_bench map_bench.cpp)
+target_link_libraries(map_bench PRIVATE nlib::nlib)
+
+add_executable(map_test map_test.cpp)
+target_link_libraries(map_test PRIVATE nlib::nlib GTest::gtest_main)
+gtest_discover_tests(map_test)
+
 add_executable(pool_test pool_test.cpp)
 target_link_libraries(pool_test PRIVATE nlib::nlib GTest::gtest_main)
 gtest_discover_tests(pool_test)

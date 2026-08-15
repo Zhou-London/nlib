@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="440" viewBox="0 0 760 440" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <!-- Data from tests/map_bench.cpp: ns/op, best of 3, N = 1,000,000. -->
+  <rect width="760" height="440" fill="#fcfcfb"/>
+
+  <!-- Title -->
+  <text x="56" y="34" font-size="15" font-weight="600" fill="#0b0b0b">nq::map vs std::unordered_map</text>
+  <text x="56" y="54" font-size="12" fill="#52514e">Time per operation in nanoseconds, lower is better — &lt;int, int&gt;, 1M shuffled keys</text>
+
+  <!-- Legend -->
+  <g font-size="12" fill="#52514e">
+    <rect x="497" y="27" width="10" height="10" rx="2" fill="#2a78d6"/>
+    <text x="512" y="36">nq::map</text>
+    <rect x="583" y="27" width="10" height="10" rx="2" fill="#eb6834"/>
+    <text x="598" y="36">std::unordered_map</text>
+  </g>
+
+  <!-- Grid and y axis (0–50 ns/op) -->
+  <g stroke="#e1e0d9" stroke-width="1">
+    <line x1="56" y1="83.8" x2="740" y2="83.8"/>
+    <line x1="56" y1="139" x2="740" y2="139"/>
+    <line x1="56" y1="194.2" x2="740" y2="194.2"/>
+    <line x1="56" y1="249.6" x2="740" y2="249.6"/>
+    <line x1="56" y1="304.8" x2="740" y2="304.8"/>
+  </g>
+  <g font-size="11" fill="#898781" text-anchor="end">
+    <text x="48" y="87.8">50</text>
+    <text x="48" y="143">40</text>
+    <text x="48" y="198.2">30</text>
+    <text x="48" y="253.6">20</text>
+    <text x="48" y="308.8">10</text>
+    <text x="48" y="364">0</text>
+  </g>
+  <text x="56" y="75" font-size="11" fill="#898781">ns / op</text>
+
+  <!-- Bars: 44px wide, 2px gap, 4px rounded data ends, baseline at y=360 -->
+  <!-- insert: nq 21.0, std 44.7 -->
+  <path d="M96.5 360 L96.5 248.1 Q96.5 244.1 100.5 244.1 L136.5 244.1 Q140.5 244.1 140.5 248.1 L140.5 360 Z" fill="#2a78d6"/>
+  <path d="M142.5 360 L142.5 117.3 Q142.5 113.3 146.5 113.3 L182.5 113.3 Q186.5 113.3 186.5 117.3 L186.5 360 Z" fill="#eb6834"/>
+  <!-- find hit: nq 5.7, std 4.6 -->
+  <path d="M267.5 360 L267.5 332.5 Q267.5 328.5 271.5 328.5 L307.5 328.5 Q311.5 328.5 311.5 332.5 L311.5 360 Z" fill="#2a78d6"/>
+  <path d="M313.5 360 L313.5 338.6 Q313.5 334.6 317.5 334.6 L353.5 334.6 Q357.5 334.6 357.5 338.6 L357.5 360 Z" fill="#eb6834"/>
+  <!-- find miss: nq 9.8, std 11.0 -->
+  <path d="M438.5 360 L438.5 309.9 Q438.5 305.9 442.5 305.9 L478.5 305.9 Q482.5 305.9 482.5 309.9 L482.5 360 Z" fill="#2a78d6"/>
+  <path d="M484.5 360 L484.5 303.3 Q484.5 299.3 488.5 299.3 L524.5 299.3 Q528.5 299.3 528.5 303.3 L528.5 360 Z" fill="#eb6834"/>
+  <!-- erase: nq 8.1, std 22.7 -->
+  <path d="M609.5 360 L609.5 319.3 Q609.5 315.3 613.5 315.3 L649.5 315.3 Q653.5 315.3 653.5 319.3 L653.5 360 Z" fill="#2a78d6"/>
+  <path d="M655.5 360 L655.5 238.7 Q655.5 234.7 659.5 234.7 L695.5 234.7 Q699.5 234.7 699.5 238.7 L699.5 360 Z" fill="#eb6834"/>
+
+  <!-- Value labels -->
+  <g font-size="11" fill="#52514e" text-anchor="middle">
+    <text x="118.5" y="238.1">21.0</text>
+    <text x="164.5" y="107.3">44.7</text>
+    <text x="289.5" y="322.5">5.7</text>
+    <text x="335.5" y="328.6">4.6</text>
+    <text x="460.5" y="299.9">9.8</text>
+    <text x="506.5" y="293.3">11.0</text>
+    <text x="631.5" y="309.3">8.1</text>
+    <text x="677.5" y="228.7">22.7</text>
+  </g>
+
+  <!-- Baseline and category labels -->
+  <line x1="56" y1="360" x2="740" y2="360" stroke="#c3c2b7" stroke-width="1"/>
+  <g font-size="12" fill="#52514e" text-anchor="middle">
+    <text x="141.5" y="382">insert</text>
+    <text x="312.5" y="382">find (hit)</text>
+    <text x="483.5" y="382">find (miss)</text>
+    <text x="654.5" y="382">erase</text>
+  </g>
+
+  <!-- Caption -->
+  <text x="56" y="420" font-size="11" fill="#898781">tests/map_bench.cpp · best of 3 runs · Apple M4 Pro · Apple clang 21, -O2 · 2026-08-15</text>
+</svg>
