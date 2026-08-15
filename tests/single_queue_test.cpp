@@ -19,29 +19,29 @@ struct Counted {
 int Counted::alive = 0;
 
 TEST(SingleQueue, DefaultStateIsEmpty) {
-  nq::single_queue<int> q(4);
+  nlib::single_queue<int> q(4);
   EXPECT_TRUE(q.empty());
   EXPECT_EQ(q.size(), 0u);
   EXPECT_EQ(q.try_pop(), std::nullopt);
 }
 
 TEST(SingleQueue, CapacityRoundsUpToPowerOfTwo) {
-  EXPECT_EQ(nq::single_queue<int>(0).capacity(), 1u);
-  EXPECT_EQ(nq::single_queue<int>(1).capacity(), 1u);
-  EXPECT_EQ(nq::single_queue<int>(5).capacity(), 8u);
-  EXPECT_EQ(nq::single_queue<int>(8).capacity(), 8u);
-  EXPECT_EQ(nq::single_queue<int>(9).capacity(), 16u);
+  EXPECT_EQ(nlib::single_queue<int>(0).capacity(), 1u);
+  EXPECT_EQ(nlib::single_queue<int>(1).capacity(), 1u);
+  EXPECT_EQ(nlib::single_queue<int>(5).capacity(), 8u);
+  EXPECT_EQ(nlib::single_queue<int>(8).capacity(), 8u);
+  EXPECT_EQ(nlib::single_queue<int>(9).capacity(), 16u);
 }
 
 TEST(SingleQueue, PopsInFifoOrder) {
-  nq::single_queue<int> q(8);
+  nlib::single_queue<int> q(8);
   for (int i = 0; i < 8; ++i) EXPECT_TRUE(q.try_emplace(i));
   for (int i = 0; i < 8; ++i) EXPECT_EQ(q.try_pop(), i);
   EXPECT_TRUE(q.empty());
 }
 
 TEST(SingleQueue, TryPushFailsWhenFull) {
-  nq::single_queue<int> q(4);
+  nlib::single_queue<int> q(4);
   for (int i = 0; i < 4; ++i) EXPECT_TRUE(q.try_emplace(i));
   EXPECT_FALSE(q.try_push(99));
   EXPECT_EQ(q.size(), 4u);
@@ -50,7 +50,7 @@ TEST(SingleQueue, TryPushFailsWhenFull) {
 }
 
 TEST(SingleQueue, FailedPushLeavesMoveOnlyArgumentIntact) {
-  nq::single_queue<std::unique_ptr<int>> q(1);
+  nlib::single_queue<std::unique_ptr<int>> q(1);
   EXPECT_TRUE(q.try_push(std::make_unique<int>(1)));
 
   auto p = std::make_unique<int>(2);
@@ -60,7 +60,7 @@ TEST(SingleQueue, FailedPushLeavesMoveOnlyArgumentIntact) {
 }
 
 TEST(SingleQueue, WrapAroundManyTimes) {
-  nq::single_queue<int> q(4);
+  nlib::single_queue<int> q(4);
   for (int i = 0; i < 1000; ++i) {
     ASSERT_TRUE(q.try_emplace(i));
     ASSERT_EQ(q.try_pop(), i);
@@ -71,7 +71,7 @@ TEST(SingleQueue, WrapAroundManyTimes) {
 TEST(SingleQueue, ElementsAreDestroyedExactlyOnce) {
   ASSERT_EQ(Counted::alive, 0);
   {
-    nq::single_queue<Counted> q(8);
+    nlib::single_queue<Counted> q(8);
     for (int i = 0; i < 6; ++i) q.try_emplace(i);
     EXPECT_EQ(Counted::alive, 6);
 
@@ -83,7 +83,7 @@ TEST(SingleQueue, ElementsAreDestroyedExactlyOnce) {
 
 TEST(SingleQueue, SpscStressPreservesOrderAndValues) {
   constexpr int n = 200000;
-  nq::single_queue<int> q(4);  // small capacity forces constant wrap and contention
+  nlib::single_queue<int> q(4);  // small capacity forces constant wrap and contention
 
   std::thread producer([&q] {
     for (int i = 0; i < n; ++i)
@@ -103,7 +103,7 @@ TEST(SingleQueue, SpscStressPreservesOrderAndValues) {
 
 TEST(SingleQueue, SpscStressWithMoveOnlyElements) {
   constexpr int n = 50000;
-  nq::single_queue<std::unique_ptr<int>> q(16);
+  nlib::single_queue<std::unique_ptr<int>> q(16);
 
   std::thread producer([&q] {
     for (int i = 0; i < n; ++i) {

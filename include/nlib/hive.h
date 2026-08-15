@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace nq {
+namespace nlib {
 
 // Minimal C++26 std::hive (P0447): unordered element pool with O(1) insert
 // and erase.
@@ -488,4 +488,4 @@ void swap(hive<T>& a, hive<T>& b) noexcept {
   a.swap(b);
 }
 
-}  // namespace nq
+}  // namespace nlib

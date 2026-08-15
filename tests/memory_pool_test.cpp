@@ -11,30 +11,30 @@
 
 namespace {
 
-static_assert(!std::is_copy_constructible_v<nq::memory_pool>);
-static_assert(!std::is_copy_assignable_v<nq::memory_pool>);
-static_assert(!std::is_move_constructible_v<nq::memory_pool>);
-static_assert(!std::is_move_assignable_v<nq::memory_pool>);
+static_assert(!std::is_copy_constructible_v<nlib::memory_pool>);
+static_assert(!std::is_copy_assignable_v<nlib::memory_pool>);
+static_assert(!std::is_move_constructible_v<nlib::memory_pool>);
+static_assert(!std::is_move_assignable_v<nlib::memory_pool>);
 
 TEST(MemoryPool, StartsEmptyWithRequestedCapacity) {
-  nq::memory_pool p(32, 10);
+  nlib::memory_pool p(32, 10);
   EXPECT_TRUE(p.empty());
   EXPECT_EQ(p.size(), 0u);
   EXPECT_EQ(p.capacity(), 10u);
 }
 
 TEST(MemoryPool, RoundsBlockSizeUpToAlignmentAndPointerSize) {
-  nq::memory_pool tiny(1, 4);
+  nlib::memory_pool tiny(1, 4);
   EXPECT_GE(tiny.block_size(), sizeof(void*));
   EXPECT_EQ(tiny.block_size() % tiny.alignment(), 0u);
 
-  nq::memory_pool cache_line(24, 4, 64);
+  nlib::memory_pool cache_line(24, 4, 64);
   EXPECT_EQ(cache_line.block_size(), 64u);
   EXPECT_EQ(cache_line.alignment(), 64u);
 }
 
 TEST(MemoryPool, AllocateReturnsAlignedDistinctBlocks) {
-  nq::memory_pool p(48, 8, 64);
+  nlib::memory_pool p(48, 8, 64);
   std::set<void*> seen;
   for (int i = 0; i < 8; ++i) {
     void* b = p.allocate();
@@ -46,7 +46,7 @@ TEST(MemoryPool, AllocateReturnsAlignedDistinctBlocks) {
 }
 
 TEST(MemoryPool, DeallocateRecyclesMostRecentBlockFirst) {
-  nq::memory_pool p(16, 4);
+  nlib::memory_pool p(16, 4);
   void* a = p.allocate();
   void* b = p.allocate();
   p.deallocate(a);
@@ -58,7 +58,7 @@ TEST(MemoryPool, DeallocateRecyclesMostRecentBlockFirst) {
 }
 
 TEST(MemoryPool, ExhaustedPoolRejectsUntilDeallocate) {
-  nq::memory_pool p(16, 3);
+  nlib::memory_pool p(16, 3);
   void* a = p.allocate();
   void* b = p.allocate();
   void* c = p.allocate();
@@ -75,7 +75,7 @@ TEST(MemoryPool, ExhaustedPoolRejectsUntilDeallocate) {
 }
 
 TEST(MemoryPool, BlocksDoNotOverlap) {
-  nq::memory_pool p(24, 40);
+  nlib::memory_pool p(24, 40);
   std::vector<unsigned char*> blocks;
   for (int i = 0; i < 40; ++i) {
     auto* b = static_cast<unsigned char*>(p.allocate());
@@ -88,7 +88,7 @@ TEST(MemoryPool, BlocksDoNotOverlap) {
 }
 
 TEST(MemoryPool, InterleavedAllocateAndDeallocate) {
-  nq::memory_pool p(64, 32);
+  nlib::memory_pool p(64, 32);
   std::vector<void*> live;
   for (int i = 0; i < 32; ++i) live.push_back(p.allocate());
   for (int i = 0; i < 32; i += 2) {  // free every other block
@@ -103,7 +103,7 @@ TEST(MemoryPool, InterleavedAllocateAndDeallocate) {
 }
 
 TEST(MemoryPool, ZeroCapacityRejectsEverything) {
-  nq::memory_pool p(8, 0);
+  nlib::memory_pool p(8, 0);
   EXPECT_EQ(p.capacity(), 0u);
   EXPECT_EQ(p.allocate(), nullptr);
 }

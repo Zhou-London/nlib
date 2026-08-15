@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace nq {
+namespace nlib {
 
 // Growable object pool. emplace() constructs an element and returns an index
 // handle; release() destroys the element and recycles its slot, most recently
@@ -107,4 +107,4 @@ class pool {
   size_type size_ = 0;          // live elements
 };
 
-}  // namespace nq
+}  // namespace nlib

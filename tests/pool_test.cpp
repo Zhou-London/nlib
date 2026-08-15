@@ -31,20 +31,20 @@ struct ThrowingCtor {
   }
 };
 
-static_assert(!std::is_copy_constructible_v<nq::pool<int>>);
-static_assert(!std::is_copy_assignable_v<nq::pool<int>>);
-static_assert(!std::is_move_constructible_v<nq::pool<int>>);
-static_assert(!std::is_move_assignable_v<nq::pool<int>>);
+static_assert(!std::is_copy_constructible_v<nlib::pool<int>>);
+static_assert(!std::is_copy_assignable_v<nlib::pool<int>>);
+static_assert(!std::is_move_constructible_v<nlib::pool<int>>);
+static_assert(!std::is_move_assignable_v<nlib::pool<int>>);
 
 TEST(Pool, StartsEmptyWithRequestedCapacity) {
-  nq::pool<int> p(16);
+  nlib::pool<int> p(16);
   EXPECT_TRUE(p.empty());
   EXPECT_EQ(p.size(), 0u);
   EXPECT_GE(p.capacity(), 16u);
 }
 
 TEST(Pool, EmplaceReturnsHandleForAccess) {
-  nq::pool<std::string> p(4);
+  nlib::pool<std::string> p(4);
   const auto a = p.emplace("alpha");
   const auto b = p.emplace(3, 'b');
   EXPECT_EQ(p[a], "alpha");
@@ -57,7 +57,7 @@ TEST(Pool, EmplaceReturnsHandleForAccess) {
 }
 
 TEST(Pool, ReleaseRecyclesMostRecentSlotFirst) {
-  nq::pool<int> p(8);
+  nlib::pool<int> p(8);
   const auto a = p.emplace(1);
   const auto b = p.emplace(2);
   const auto c = p.emplace(3);
@@ -74,7 +74,7 @@ TEST(Pool, ReleaseRecyclesMostRecentSlotFirst) {
 }
 
 TEST(Pool, GrowsBeyondInitialCapacity) {
-  nq::pool<int> p(2);
+  nlib::pool<int> p(2);
   std::vector<std::size_t> handles;
   for (int i = 0; i < 100; ++i) handles.push_back(p.emplace(i));
   EXPECT_EQ(p.size(), 100u);
@@ -83,7 +83,7 @@ TEST(Pool, GrowsBeyondInitialCapacity) {
 }
 
 TEST(Pool, GrowthRelocatesLiveAndFreeSlots) {
-  nq::pool<std::string> p(4);
+  nlib::pool<std::string> p(4);
   std::vector<std::size_t> handles;
   for (int i = 0; i < 4; ++i)
     handles.push_back(p.emplace("value-long-enough-to-defeat-sso-" + std::to_string(i)));
@@ -103,7 +103,7 @@ TEST(Pool, GrowthRelocatesLiveAndFreeSlots) {
 }
 
 TEST(Pool, MoveOnlyElements) {
-  nq::pool<std::unique_ptr<int>> p(2);
+  nlib::pool<std::unique_ptr<int>> p(2);
   const auto a = p.emplace(std::make_unique<int>(7));
   for (int i = 0; i < 20; ++i) p.emplace(std::make_unique<int>(i));  // growth relocates
   EXPECT_EQ(*p[a], 7);
@@ -112,7 +112,7 @@ TEST(Pool, MoveOnlyElements) {
 TEST(Pool, ElementsAreDestroyedExactlyOnce) {
   ASSERT_EQ(Counted::alive, 0);
   {
-    nq::pool<Counted> p(4);
+    nlib::pool<Counted> p(4);
     std::vector<std::size_t> handles;
     for (int i = 0; i < 10; ++i) handles.push_back(p.emplace(i));  // grows past 4
     EXPECT_EQ(Counted::alive, 10);
@@ -128,7 +128,7 @@ TEST(Pool, ElementsAreDestroyedExactlyOnce) {
 }
 
 TEST(Pool, FailedConstructionAddsNothing) {
-  nq::pool<ThrowingCtor> p(2);
+  nlib::pool<ThrowingCtor> p(2);
   const auto a = p.emplace(false);
   EXPECT_THROW(p.emplace(true), std::runtime_error);  // append path
   EXPECT_EQ(p.size(), 1u);

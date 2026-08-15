@@ -27,13 +27,13 @@ struct Counted {
 };
 int Counted::alive = 0;
 
-static_assert(!std::is_copy_constructible_v<nq::map<int, int>>);
-static_assert(!std::is_copy_assignable_v<nq::map<int, int>>);
-static_assert(std::is_move_constructible_v<nq::map<int, int>>);
-static_assert(std::is_move_assignable_v<nq::map<int, int>>);
+static_assert(!std::is_copy_constructible_v<nlib::map<int, int>>);
+static_assert(!std::is_copy_assignable_v<nlib::map<int, int>>);
+static_assert(std::is_move_constructible_v<nlib::map<int, int>>);
+static_assert(std::is_move_assignable_v<nlib::map<int, int>>);
 
 TEST(Map, DefaultConstructedIsEmpty) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   EXPECT_TRUE(m.empty());
   EXPECT_EQ(m.size(), 0u);
   EXPECT_EQ(m.begin(), m.end());
@@ -43,7 +43,7 @@ TEST(Map, DefaultConstructedIsEmpty) {
 }
 
 TEST(Map, TryEmplaceInsertsOnce) {
-  nq::map<int, std::string> m;
+  nlib::map<int, std::string> m;
   auto [it, inserted] = m.try_emplace(1, "one");
   EXPECT_TRUE(inserted);
   EXPECT_EQ(it->first, 1);
@@ -57,7 +57,7 @@ TEST(Map, TryEmplaceInsertsOnce) {
 }
 
 TEST(Map, TryEmplaceLeavesArgumentsOnFailure) {
-  nq::map<std::string, std::unique_ptr<int>> m;
+  nlib::map<std::string, std::unique_ptr<int>> m;
   std::string key = "a-key-long-enough-to-defeat-sso";
   EXPECT_TRUE(m.try_emplace(std::move(key), std::make_unique<int>(1)).second);
 
@@ -70,7 +70,7 @@ TEST(Map, TryEmplaceLeavesArgumentsOnFailure) {
 }
 
 TEST(Map, InsertMovesPairOnlyOnSuccess) {
-  nq::map<int, std::unique_ptr<int>> m;
+  nlib::map<int, std::unique_ptr<int>> m;
   EXPECT_TRUE(m.insert({7, std::make_unique<int>(70)}).second);
 
   std::pair<int, std::unique_ptr<int>> dup(7, std::make_unique<int>(71));
@@ -81,7 +81,7 @@ TEST(Map, InsertMovesPairOnlyOnSuccess) {
 }
 
 TEST(Map, EmplaceConstructsPair) {
-  nq::map<int, std::string> m;
+  nlib::map<int, std::string> m;
   auto [it, inserted] = m.emplace(3, "three");
   EXPECT_TRUE(inserted);
   EXPECT_EQ(it->second, "three");
@@ -90,7 +90,7 @@ TEST(Map, EmplaceConstructsPair) {
 }
 
 TEST(Map, SubscriptInsertsDefaultAndAssigns) {
-  nq::map<int, std::string> m;
+  nlib::map<int, std::string> m;
   m[5] = "five";
   EXPECT_EQ(m.at(5), "five");
   EXPECT_EQ(m[6], "");
@@ -101,7 +101,7 @@ TEST(Map, SubscriptInsertsDefaultAndAssigns) {
 }
 
 TEST(Map, AtThrowsForMissingKey) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   m.try_emplace(1, 10);
   EXPECT_EQ(m.at(1), 10);
   EXPECT_THROW(m.at(2), std::out_of_range);
@@ -110,7 +110,7 @@ TEST(Map, AtThrowsForMissingKey) {
 }
 
 TEST(Map, GrowthKeepsAllElementsFindable) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   for (int i = 0; i < 10000; ++i) EXPECT_TRUE(m.try_emplace(i * 7, i).second);
   EXPECT_EQ(m.size(), 10000u);
   for (int i = 0; i < 10000; ++i) {
@@ -122,7 +122,7 @@ TEST(Map, GrowthKeepsAllElementsFindable) {
 }
 
 TEST(Map, IterationVisitsEachElementOnce) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   for (int i = 0; i < 100; ++i) m.emplace(i, i * 2);
 
   std::vector<int> keys;
@@ -137,7 +137,7 @@ TEST(Map, IterationVisitsEachElementOnce) {
 }
 
 TEST(Map, EraseByKey) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   for (int i = 0; i < 50; ++i) m.emplace(i, i);
 
   for (int i = 0; i < 50; i += 2) EXPECT_EQ(m.erase(i), 1u);
@@ -147,7 +147,7 @@ TEST(Map, EraseByKey) {
 }
 
 TEST(Map, EraseIteratorReturnsNext) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   for (int i = 0; i < 20; ++i) m.emplace(i, i);
 
   std::size_t visited = 0;
@@ -160,7 +160,7 @@ TEST(Map, EraseIteratorReturnsNext) {
 }
 
 TEST(Map, ErasedSlotsAreReusable) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   m.reserve(64);
   for (int round = 0; round < 100; ++round) {
     for (int i = 0; i < 64; ++i) ASSERT_TRUE(m.emplace(i, round).second);
@@ -170,7 +170,7 @@ TEST(Map, ErasedSlotsAreReusable) {
 }
 
 TEST(Map, ReserveKeepsReferencesStable) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   m.reserve(100);
   m.try_emplace(0, 0);
   const int* addr = &m.at(0);
@@ -179,7 +179,7 @@ TEST(Map, ReserveKeepsReferencesStable) {
 }
 
 TEST(Map, ClearFreesAndStaysUsable) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   for (int i = 0; i < 100; ++i) m.emplace(i, i);
 
   m.clear();
@@ -192,14 +192,14 @@ TEST(Map, ClearFreesAndStaysUsable) {
 }
 
 TEST(Map, MoveConstructAndAssign) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   for (int i = 0; i < 30; ++i) m.emplace(i, i);
 
-  nq::map<int, int> moved(std::move(m));
+  nlib::map<int, int> moved(std::move(m));
   EXPECT_EQ(moved.size(), 30u);
   for (int i = 0; i < 30; ++i) EXPECT_EQ(moved.at(i), i);
 
-  nq::map<int, int> assigned;
+  nlib::map<int, int> assigned;
   assigned.try_emplace(99, 99);
   assigned = std::move(moved);
   EXPECT_EQ(assigned.size(), 30u);
@@ -207,9 +207,9 @@ TEST(Map, MoveConstructAndAssign) {
 }
 
 TEST(Map, SwapExchangesContents) {
-  nq::map<int, int> a;
+  nlib::map<int, int> a;
   a.try_emplace(1, 10);
-  nq::map<int, int> b;
+  nlib::map<int, int> b;
   b.try_emplace(2, 20);
   b.try_emplace(3, 30);
 
@@ -223,7 +223,7 @@ TEST(Map, SwapExchangesContents) {
 TEST(Map, ElementsAreDestroyedExactlyOnce) {
   ASSERT_EQ(Counted::alive, 0);
   {
-    nq::map<int, Counted> m;
+    nlib::map<int, Counted> m;
     for (int i = 0; i < 50; ++i) m.emplace(i, i);  // grows past several rehashes
     EXPECT_EQ(Counted::alive, 50);
 
@@ -240,7 +240,7 @@ TEST(Map, ElementsAreDestroyedExactlyOnce) {
 }
 
 TEST(Map, RandomOpsMatchStdUnorderedMap) {
-  nq::map<int, int> m;
+  nlib::map<int, int> m;
   std::unordered_map<int, int> ref;
   std::mt19937 rng(12345);
   std::uniform_int_distribution<int> key_dist(0, 500);

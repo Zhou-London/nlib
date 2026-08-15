@@ -4,7 +4,7 @@
 #include <cstring>
 #include <new>
 
-namespace nq {
+namespace nlib {
 
 // Fixed-capacity fixed-size-block allocator over one contiguous buffer.
 // allocate() hands out uninitialized blocks of block_size() bytes, most
@@ -75,4 +75,4 @@ class memory_pool {
   size_type size_ = 0;         // outstanding blocks
 };
 
-}  // namespace nq
+}  // namespace nlib

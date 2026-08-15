@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace nq {
+namespace nlib {
 
 // Open-addressing hash map in one flat allocation: a std::pair<Key, T> slot
 // array plus one control byte per slot (empty, tombstone, or a 7-bit hash
@@ -172,12 +172,12 @@ class map {
   // Throws std::out_of_range if `key` is absent.
   T& at(const Key& key) {
     const size_type idx = find_index(key);
-    if (idx == npos) throw std::out_of_range("nq::map::at");
+    if (idx == npos) throw std::out_of_range("nlib::map::at");
     return slots_[idx].second;
   }
   const T& at(const Key& key) const {
     const size_type idx = find_index(key);
-    if (idx == npos) throw std::out_of_range("nq::map::at");
+    if (idx == npos) throw std::out_of_range("nlib::map::at");
     return slots_[idx].second;
   }
 
@@ -411,4 +411,4 @@ void swap(map<Key, T, Hash, KeyEqual>& a, map<Key, T, Hash, KeyEqual>& b) noexce
   a.swap(b);
 }
 
-}  // namespace nq
+}  // namespace nlib

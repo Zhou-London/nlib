@@ -1,4 +1,4 @@
-// Benchmarks nq::map against std::unordered_map<int, int>: N shuffled-key
+// Benchmarks nlib::map against std::unordered_map<int, int>: N shuffled-key
 // inserts, hit and miss lookups, and shuffled-order erases. Setup and teardown
 // are untimed; each workload reports the best of three runs in ns/op. Build
 // with optimizations enabled.
@@ -76,7 +76,7 @@ int main() {
   std::shuffle(keys.begin(), keys.end(), rng);
   std::shuffle(miss.begin(), miss.end(), rng);
 
-  run<nq::map<int, int>>("nq::map", keys, miss);
+  run<nlib::map<int, int>>("nlib::map", keys, miss);
   run<std::unordered_map<int, int>>("std::unordered_map", keys, miss);
   std::fprintf(stderr, "sink=%llu\n", static_cast<unsigned long long>(sink));
   return 0;

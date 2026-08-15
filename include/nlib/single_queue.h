@@ -8,7 +8,7 @@
 #include <optional>
 #include <utility>
 
-namespace nq {
+namespace nlib {
 
 // Bounded single-producer single-consumer FIFO. Storage is one heap array
 // sized at construction (the requested capacity rounds up to a power of two);
@@ -114,4 +114,4 @@ class single_queue {
   std::uint64_t cached_head_ = 0;  // producer's snapshot of head_
 };
 
-}  // namespace nq
+}  // namespace nlib
