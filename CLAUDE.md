@@ -4,17 +4,19 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-`nlib` — header-only C++23 data structures for a trading system, namespace `nq`.
-No dependencies beyond the standard library; GoogleTest is fetched by CMake for
-the tests only. See [README.md](README.md) for the component list.
+`nlib` — header-only C++23 data structures and wire records for a trading
+system, namespace `nlib`. No dependencies beyond the standard library;
+GoogleTest is fetched by CMake for the tests only. See [README.md](README.md)
+for the component list.
 
 ## Layout
 
 ```
-include/nlib/*.h    the library — one container per header, no .cpp files
-tests/*_test.cpp    one GoogleTest binary per header
-tests/map_bench.cpp benchmark, built but not registered with CTest
-CMakeLists.txt      nlib INTERFACE target + nlib::nlib alias
+include/nlib/*.h      the library — one container per header, no .cpp files
+include/nlib/common.h the wire records: order, trade, book + shared enums
+tests/*_test.cpp      one GoogleTest binary per header
+tests/map_bench.cpp   benchmark, built but not registered with CTest
+CMakeLists.txt        nlib INTERFACE target + nlib::nlib alias
 ```
 
 ## Build and test
@@ -46,6 +48,26 @@ benchmark needs an optimized build: `./build/tests/map_bench`.
   types and members mirroring the standard library.
 - Prefer removing a component over keeping a weaker duplicate of a standard one
   — `vector` was deleted for exactly that reason (`85b89dd`).
+
+## `common.h` is not a container
+
+`include/nlib/common.h` holds the wire records (`order`, `trade`, `book`) and
+the constants and enums they are built from. It follows different rules from
+the containers:
+
+- **Keep every record trivially copyable and standard layout.** The
+  `static_assert`s at the bottom of the file enforce it. That rules out
+  constructors, virtuals, private members, `std::string`, and owning pointers —
+  a record must stay memcpy-able and mappable into shared memory.
+- **A field change is a breaking change for every consumer.** These structs are
+  the interface between the feed, the book, and storage; changing a field's
+  meaning, order, or width breaks anything already reading the layout. Add
+  fields at the end, and say so in the commit body.
+- **Prices are fixed point** in units of `1/price_scale`, times are
+  Unix-epoch nanoseconds. Do not introduce a float on this path.
+- Only genuinely shared vocabulary belongs here. A type used by exactly one
+  consumer stays in that consumer's repository — `nqbook`'s `Node` wrapper was
+  deleted rather than promoted, once `order` carried its own list hooks.
 
 ## Adding a container
 

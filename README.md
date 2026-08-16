@@ -10,8 +10,8 @@
 
 Project of NowQuant.
 
-A set of data structures for trading system. Header-only, C++23, namespace `nq`,
-no dependencies beyond the standard library.
+A set of data structures and wire records for trading system. Header-only,
+C++23, namespace `nlib`, no dependencies beyond the standard library.
 
 Authors:
 - Zhouzhou (https://zhouzhouzhang.co.uk)
@@ -20,11 +20,28 @@ Authors:
 
 | Header | Type | What it is |
 |---|---|---|
-| [`nlib/hive.h`](include/nlib/hive.h) | `nq::hive<T>` | Minimal C++26 `std::hive` (P0447). Unordered element pool with O(1) insert and erase and **stable element addresses**; erased slots are tracked as jump-counting skipfield runs, so iteration skips a whole run in O(1). |
-| [`nlib/map.h`](include/nlib/map.h) | `nq::map<Key, T, Hash, KeyEqual>` | Flat open-addressing hash map: one allocation holding the slot array plus a control byte per slot (empty, tombstone, or a 7-bit hash fragment that pre-filters comparisons). Power-of-two capacity, linear probing, rehash at 3/4 load. |
-| [`nlib/single_queue.h`](include/nlib/single_queue.h) | `nq::single_queue<T>` | Bounded lock-free SPSC ring buffer. Capacity rounds up to a power of two at construction; each side owns a cache line holding its counter plus a cached copy of the other side's, so the hot path touches no shared line. |
-| [`nlib/pool.h`](include/nlib/pool.h) | `nq::pool<T>` | Growable object pool. `emplace()` returns an index handle, `release()` recycles the slot. Handles stay valid until released; growth may move elements, so it invalidates references, never handles. |
-| [`nlib/memory_pool.h`](include/nlib/memory_pool.h) | `nq::memory_pool` | Fixed-capacity fixed-size-block allocator over one contiguous aligned buffer. The LIFO free list is threaded through the freed blocks themselves, so there is no per-block metadata. |
+| [`nlib/hive.h`](include/nlib/hive.h) | `nlib::hive<T>` | Minimal C++26 `std::hive` (P0447). Unordered element pool with O(1) insert and erase and **stable element addresses**; erased slots are tracked as jump-counting skipfield runs, so iteration skips a whole run in O(1). |
+| [`nlib/map.h`](include/nlib/map.h) | `nlib::map<Key, T, Hash, KeyEqual>` | Flat open-addressing hash map: one allocation holding the slot array plus a control byte per slot (empty, tombstone, or a 7-bit hash fragment that pre-filters comparisons). Power-of-two capacity, linear probing, rehash at 3/4 load. |
+| [`nlib/single_queue.h`](include/nlib/single_queue.h) | `nlib::single_queue<T>` | Bounded lock-free SPSC ring buffer. Capacity rounds up to a power of two at construction; each side owns a cache line holding its counter plus a cached copy of the other side's, so the hot path touches no shared line. |
+| [`nlib/pool.h`](include/nlib/pool.h) | `nlib::pool<T>` | Growable object pool. `emplace()` returns an index handle, `release()` recycles the slot. Handles stay valid until released; growth may move elements, so it invalidates references, never handles. |
+| [`nlib/memory_pool.h`](include/nlib/memory_pool.h) | `nlib::memory_pool` | Fixed-capacity fixed-size-block allocator over one contiguous aligned buffer. The LIFO free list is threaded through the freed blocks themselves, so there is no per-block metadata. |
+| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::trade`, `nlib::book` | The wire records every component on the feed path agrees on, plus the `side` / `order_type` / `order_action` enums and the `price_scale` and `book_depth` constants. Not containers — see below. |
+
+### Wire records
+
+`common.h` is the shared vocabulary of the trading stack: an `order` or `trade`
+as it arrives from a feed, and a `book` holding the top `book_depth` (10) price
+levels per side. Consumers such as
+[nqbook](https://github.com/Zhou-London/nqbook) include it rather than declaring
+their own copies.
+
+- **Trivially copyable and standard layout**, asserted at compile time — a
+  record can be memcpy'd, mapped into shared memory, or written to a file as is.
+- **Fixed-point prices**, in units of `1/price_scale` (1/10,000) of the quote
+  unit; no floating point on the feed path.
+- **Nanosecond Unix-epoch timestamps** in `time_ns`.
+- `order` carries `prev` / `next` intrusive list hooks, written by whichever
+  book owns the order, so resting an order costs no separate node allocation.
 
 Shared conventions across the containers:
 
@@ -47,7 +64,7 @@ target_link_libraries(my_app PRIVATE nlib::nlib)
 ```cpp
 #include <nlib/map.h>
 
-nq::map<int, int> m;
+nlib::map<int, int> m;
 m.try_emplace(42, 7);
 if (auto it = m.find(42); it != m.end()) use(it->second);
 ```
@@ -75,11 +92,32 @@ registered with CTest, and it is only meaningful from an optimized build:
 
 1,000,000 shuffled keys, best of three runs, setup and teardown untimed:
 
-<img src="tests/map_bench.svg" alt="nq::map vs std::unordered_map, ns/op" width="640" />
+<img src="tests/map_bench.svg" alt="nlib::map vs std::unordered_map, ns/op" width="640" />
 
-`nq::map` wins on insert and erase, where the flat layout avoids a node
+`nlib::map` wins on insert and erase, where the flat layout avoids a node
 allocation per element; lookups are comparable, since a hit costs a probe and a
 key comparison either way.
+
+## Releases
+
+### v0.1.0 — 2026-08-15
+
+The first published version: five containers and the shared wire records.
+
+- **Containers** — `hive` (stable addresses, skipfield iteration), `map` (flat
+  open-addressing), `single_queue` (lock-free SPSC ring), `pool` (handle-based
+  object pool), `memory_pool` (fixed-size-block allocator). Each has a
+  GoogleTest binary; `map` also has a benchmark against `std::unordered_map`.
+- **`common.h`** — `order`, `trade`, and ten-level `book` records with the
+  `side` / `order_type` / `order_action` enums, fixed-point prices, and
+  nanosecond timestamps. `order` carries intrusive `prev` / `next` hooks so a
+  book can rest it without a node allocation.
+- **Namespace `nq` renamed to `nlib`**, matching the library and target names.
+  Consumers must update qualified names; there is no compatibility alias.
+- Insertion is move-only across every container: the `insert(const T&)`
+  overloads are gone, so no insertion path copies an element silently.
+- `vector` was removed — `std::vector` covers it, and a weaker duplicate of a
+  standard container is not worth maintaining.
 
 ## Contribution
 Fork and make a PR if you would like to give some improvements.
