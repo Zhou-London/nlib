@@ -100,6 +100,13 @@ key comparison either way.
 
 ## Releases
 
+### v0.1.1 — 2026-08-17
+
+- **`order::side` and `trade::side` are declared `nlib::side`.** Unqualified,
+  the member hides the enum for the rest of the class scope, which GCC 13
+  rejects under C++23 as `-Wchanges-meaning` and which broke every consumer
+  compiling the header. Layout and the public spelling `o.side` are unchanged.
+
 ### v0.1.0 — 2026-08-15
 
 The first published version: five containers and the shared wire records.

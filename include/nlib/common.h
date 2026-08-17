@@ -24,7 +24,7 @@ struct order {
   order* prev;            // intrusive list hooks, written by the owning book
   order* next;
   std::uint32_t instrument_id;  // mapping is application-defined
-  side side;
+  nlib::side side;              // qualified: the member name hides the enum in class scope
   order_type type;
   order_action action;
 };
@@ -37,7 +37,7 @@ struct trade {
   std::int64_t qty;       // trading units
   std::int64_t time_ns;   // Unix-epoch nanoseconds
   std::uint32_t instrument_id;  // mapping is application-defined
-  side side;              // aggressor side
+  nlib::side side;        // aggressor side; qualified as in order
 };
 
 struct book {
