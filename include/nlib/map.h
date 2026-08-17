@@ -147,6 +147,8 @@ class map {
 
   [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
   size_type size() const noexcept { return size_; }
+  // Allocated slot count; each slot is one value_type plus one control byte.
+  size_type capacity() const noexcept { return capacity_; }
   size_type max_size() const noexcept { return static_cast<size_type>(-1) / sizeof(value_type); }
 
   // Guarantees that the next `n - size()` insertions do not rehash.
