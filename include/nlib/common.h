@@ -19,9 +19,10 @@ enum class side : std::uint8_t { buy, sell };
 enum class order_type : std::uint8_t { limit, market };
 
 // What an order record does to the book. `qty` means: for add, the resting
-// quantity; for cancel, the cancelled quantity (the order leaves the book at
-// zero remaining); for modify, the new remaining quantity. clear drops every
-// resting order of the instrument — a feed sends it before replaying a
+// quantity; for cancel, the remaining quantity the order leaves the book
+// with (partial cancels arrive as modify); for modify, the new remaining
+// quantity, keeping queue priority while the price is unchanged. clear drops
+// every resting order of the instrument — a feed sends it before replaying a
 // snapshot — and only `seq`, `instrument_id` and the times are meaningful.
 enum class order_action : std::uint8_t { add, cancel, modify, clear };
 
