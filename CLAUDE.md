@@ -13,7 +13,7 @@ for the component list.
 
 ```
 include/nlib/*.h      the library — one container per header, no .cpp files
-include/nlib/common.h the wire records: order, trade, book + shared enums
+include/nlib/common.h the wire records: order, trade, book, metrics + shared enums
 tests/*_test.cpp      one GoogleTest binary per header
 tests/map_bench.cpp   benchmark, built but not registered with CTest
 CMakeLists.txt        nlib INTERFACE target + nlib::nlib alias
@@ -51,9 +51,9 @@ benchmark needs an optimized build: `./build/tests/map_bench`.
 
 ## `common.h` is not a container
 
-`include/nlib/common.h` holds the wire records (`order`, `trade`, `book`) and
-the constants and enums they are built from. It follows different rules from
-the containers:
+`include/nlib/common.h` holds the wire records (`order`, `trade`, `book`,
+`metrics`) and the constants and enums they are built from. It follows
+different rules from the containers:
 
 - **Keep every record trivially copyable and standard layout.** The
   `static_assert`s at the bottom of the file enforce it. That rules out

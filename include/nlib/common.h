@@ -63,14 +63,37 @@ struct book {
   std::int64_t recv_ns;                 // receive time of the latest applied event
 };
 
+// One sample of a book pipeline's health, published unframed on its own
+// monitoring socket. Counters are cumulative since process start — consumers
+// difference consecutive samples for rates; gauge fields are instantaneous.
+struct metrics {
+  std::int64_t ts_ns;                 // sample time, Unix-epoch nanoseconds
+  std::uint64_t feed_messages;        // feed messages received, matched or not
+  std::uint64_t feed_bytes;           // payload bytes of those messages
+  std::uint64_t feed_orders;          // decoded order records
+  std::uint64_t feed_trades;          // decoded trade records
+  std::uint64_t feed_dropped;         // messages matching no framing
+  std::uint64_t book_events;          // events applied across all books
+  std::uint64_t book_apply_ns;        // cumulative latency of the timed applies
+  std::uint64_t book_samples;         // applies actually timed
+  std::uint64_t book_instruments;     // gauge: books held
+  std::uint64_t book_resting_orders;  // gauge: resting orders across books
+  std::uint64_t book_memory_bytes;    // gauge: estimated book storage
+  std::uint64_t writer_orders;        // order rows appended
+  std::uint64_t writer_trades;        // trade rows appended
+  std::uint64_t writer_books;         // book snapshot rows appended
+};
+
 static_assert(std::is_trivially_copyable_v<order> && std::is_standard_layout_v<order>);
 static_assert(std::is_trivially_copyable_v<trade> && std::is_standard_layout_v<trade>);
 static_assert(std::is_trivially_copyable_v<book> && std::is_standard_layout_v<book>);
+static_assert(std::is_trivially_copyable_v<metrics> && std::is_standard_layout_v<metrics>);
 
 // The wire contract: feeds serialize these structs byte for byte (LP64,
 // little-endian), so any layout drift must fail the build, not the peer.
 static_assert(sizeof(order) == 72);
 static_assert(sizeof(trade) == 64);
 static_assert(sizeof(book) == 344);
+static_assert(sizeof(metrics) == 120);
 
 }  // namespace nlib
