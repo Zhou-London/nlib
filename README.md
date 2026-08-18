@@ -25,23 +25,38 @@ Authors:
 | [`nlib/single_queue.h`](include/nlib/single_queue.h) | `nlib::single_queue<T>` | Bounded lock-free SPSC ring buffer. Capacity rounds up to a power of two at construction; each side owns a cache line holding its counter plus a cached copy of the other side's, so the hot path touches no shared line. |
 | [`nlib/pool.h`](include/nlib/pool.h) | `nlib::pool<T>` | Growable object pool. `emplace()` returns an index handle, `release()` recycles the slot. Handles stay valid until released; growth may move elements, so it invalidates references, never handles. |
 | [`nlib/memory_pool.h`](include/nlib/memory_pool.h) | `nlib::memory_pool` | Fixed-capacity fixed-size-block allocator over one contiguous aligned buffer. The LIFO free list is threaded through the freed blocks themselves, so there is no per-block metadata. |
-| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::trade`, `nlib::book` | The wire records every component on the feed path agrees on, plus the `side` / `order_type` / `order_action` enums and the `price_scale` and `book_depth` constants. Not containers — see below. |
+| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::trade`, `nlib::book`, `nlib::metrics` | The wire records every component on the feed path agrees on, plus the `side` / `order_type` / `order_action` enums and the `price_scale`, `qty_scale`, and `book_depth` constants. Not containers — see below. |
 
 ### Wire records
 
 `common.h` is the shared vocabulary of the trading stack: an `order` or `trade`
-as it arrives from a feed, and a `book` holding the top `book_depth` (10) price
-levels per side. Consumers such as
-[nqbook](https://github.com/Zhou-London/nqbook) include it rather than declaring
-their own copies.
+as it arrives from a feed, a `book` holding the top `book_depth` (10) price
+levels per side, and a `metrics` sample of a book pipeline's health. Consumers
+such as [nqbook](https://github.com/Zhou-London/nqbook) include it rather than
+declaring their own copies.
 
 - **Trivially copyable and standard layout**, asserted at compile time — a
   record can be memcpy'd, mapped into shared memory, or written to a file as is.
-- **Fixed-point prices**, in units of `1/price_scale` (1/10,000) of the quote
-  unit; no floating point on the feed path.
-- **Nanosecond Unix-epoch timestamps** in `time_ns`.
+  `static_assert`s also pin the wire sizes (`order` 72, `trade` 64, `book` 344,
+  `metrics` 120), so layout drift fails the build instead of the peer.
+- **Fixed point throughout.** Prices are in units of `1/price_scale` (1e-10) of
+  the quote unit, quantities in `1/qty_scale` (1e-8) trading units — 10 price
+  and 8 lot decimals, enough for every Kraken spot pair. No floating point on
+  the feed path.
+- **Two timestamps, both Unix-epoch nanoseconds**: `event_ns` is the exchange
+  event time, `recv_ns` is stamped by the receiving process, so feed latency is
+  measurable end to end. `book` carries both times of its latest applied event.
+- **`order_action` is what the record does to the book** — `add`, `cancel`
+  (the order leaves the book), `modify` (a new remaining quantity, keeping
+  queue priority while the price is unchanged), or `clear` (drop the
+  instrument's resting orders, ahead of a snapshot replay). `qty` reads
+  against the action.
 - `order` carries `prev` / `next` intrusive list hooks, written by whichever
   book owns the order, so resting an order costs no separate node allocation.
+- **`metrics` is monitoring, not feed data**: cumulative feed/book/writer
+  counters plus timed-apply accumulators and instantaneous book gauges,
+  published unframed on its own socket. Difference consecutive samples for
+  rates.
 
 Shared conventions across the containers:
 
@@ -99,6 +114,34 @@ allocation per element; lookups are comparable, since a hit costs a probe and a
 key comparison either way.
 
 ## Releases
+
+### v0.2.0 — 2026-08-17
+
+`common.h` grew into the vocabulary a live exchange feed needs. Every record
+changed layout, so consumers must be rebuilt together.
+
+- **Event and receive time are separate.** `order` and `trade` carry
+  `event_ns` (exchange event time) and a trailing `recv_ns` stamped on
+  receipt; `book`'s `time_ns` is renamed `event_ns` and gains `recv_ns`. Feed
+  latency is now measurable end to end. `recv_ns` is appended last, so every
+  earlier offset is unchanged.
+- **Quantities are fixed point** in `1/qty_scale` (1e-8) units — crypto
+  quantities are fractional — and `price_scale` grows to 1e10. The pair covers
+  Kraken's maximum 10 price and 8 lot decimals.
+- **`order_action` gains `modify` and `clear`.** `modify` sets a new remaining
+  quantity and keeps queue priority while the price is unchanged; `clear`
+  drops an instrument's resting orders ahead of a snapshot replay. `cancel`
+  now means the order leaves the book outright — a partial cancel arrives as
+  `modify`.
+- **`nlib::metrics`**, a 120-byte sample of a book pipeline's health:
+  cumulative feed, book, and writer counters, the timed-apply latency
+  accumulators, and instantaneous book gauges. Published unframed on a
+  monitoring socket; `nqbook`'s metrics thread is the producer.
+- **Wire sizes are asserted** (`order` 72, `trade` 64, `book` 344, `metrics`
+  120), so a layout change fails the build rather than the peer.
+- **`map::capacity()`** exposes the allocated slot count, letting a consumer
+  account the table's memory — one `value_type` plus one control byte per slot
+  — without reaching into the layout.
 
 ### v0.1.1 — 2026-08-17
 

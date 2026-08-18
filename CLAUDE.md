@@ -63,8 +63,10 @@ different rules from the containers:
   the interface between the feed, the book, and storage; changing a field's
   meaning, order, or width breaks anything already reading the layout. Add
   fields at the end, and say so in the commit body.
-- **Prices are fixed point** in units of `1/price_scale`, times are
-  Unix-epoch nanoseconds. Do not introduce a float on this path.
+- **Prices and quantities are fixed point**, in units of `1/price_scale` and
+  `1/qty_scale`; times are Unix-epoch nanoseconds, split into `event_ns`
+  (exchange) and `recv_ns` (stamped on receipt). Do not introduce a float on
+  this path.
 - Only genuinely shared vocabulary belongs here. A type used by exactly one
   consumer stays in that consumer's repository — `nqbook`'s `Node` wrapper was
   deleted rather than promoted, once `order` carried its own list hooks.
