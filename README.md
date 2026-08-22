@@ -37,7 +37,7 @@ declaring their own copies.
 
 - **Trivially copyable and standard layout**, asserted at compile time — a
   record can be memcpy'd, mapped into shared memory, or written to a file as is.
-  `static_assert`s also pin the wire sizes (`order` 72, `trade` 64, `book` 344,
+  `static_assert`s also pin the wire sizes (`order` 88, `trade` 64, `book` 344,
   `metrics` 120), so layout drift fails the build instead of the peer.
 - **Fixed point throughout.** Prices are in units of `1/price_scale` (1e-10) of
   the quote unit, quantities in `1/qty_scale` (1e-8) trading units — 10 price
@@ -46,11 +46,13 @@ declaring their own copies.
 - **Two timestamps, both Unix-epoch nanoseconds**: `event_ns` is the exchange
   event time, `recv_ns` is stamped by the receiving process, so feed latency is
   measurable end to end. `book` carries both times of its latest applied event.
-- **`order_action` is what the record does to the book** — `add`, `cancel`
-  (the order leaves the book), `modify` (a new remaining quantity, keeping
-  queue priority while the price is unchanged), or `clear` (drop the
-  instrument's resting orders, ahead of a snapshot replay). `qty` reads
-  against the action.
+- **`order_action` is what the record does to the book**, and it selects the
+  quantity field that carries the event: `add` rests `qty`, `cancel` takes
+  `cancel_qty` out (the order leaves once nothing remains), `modify` sets the
+  remaining quantity to `new_qty` while keeping queue priority at an unchanged
+  price, and `clear` drops the instrument's resting orders ahead of a snapshot
+  replay. One field per action means a consumer never has to read `qty`
+  against the action to know what it means.
 - `order` carries `prev` / `next` intrusive list hooks, written by whichever
   book owns the order, so resting an order costs no separate node allocation.
 - **`metrics` is monitoring, not feed data**: cumulative feed/book/writer
@@ -114,6 +116,24 @@ allocation per element; lookups are comparable, since a hit costs a probe and a
 key comparison either way.
 
 ## Releases
+
+### v0.3.0 — 2026-08-22
+
+`order` carries the quantity an action means in its own field. `order` grows
+from 72 to 88 bytes, so every consumer must be rebuilt together.
+
+- **`cancel_qty` and `new_qty`.** A `cancel` puts the quantity leaving the
+  book in `cancel_qty`, a `modify` puts the new remaining quantity in
+  `new_qty` (`<= 0` removes the order); both are 0 for the actions that do not
+  use them. `qty` keeps one meaning — the resting quantity on an `add` — so a
+  consumer no longer reads one field against `action` to learn what it holds.
+- **`cancel` is no longer all-or-nothing.** It shrinks the resting order by
+  `cancel_qty` and the order leaves only when nothing remains, which is what a
+  feed reporting one quantity per event actually sends. A full cancel is the
+  case where `cancel_qty` is the whole remainder.
+- Both fields are inserted before `event_ns`, not appended, so every offset
+  from `event_ns` on has moved. The `sizeof` asserts catch a stale consumer at
+  compile time.
 
 ### v0.2.0 — 2026-08-17
 
