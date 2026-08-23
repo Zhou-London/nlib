@@ -33,3 +33,7 @@ gtest_discover_tests(map_test)
 add_executable(pool_test pool_test.cpp)
 target_link_libraries(pool_test PRIVATE nlib::nlib GTest::gtest_main)
 gtest_discover_tests(pool_test)
+
+add_executable(common_test common_test.cpp)
+target_link_libraries(common_test PRIVATE nlib::nlib GTest::gtest_main)
+gtest_discover_tests(common_test)

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <variant>
 
 namespace nlib {
 
@@ -54,6 +55,18 @@ struct trade {
   std::int64_t recv_ns;   // local receive time, stamped by the receiving process
 };
 
+// One L2 price-level record: qty is the level's new total resting quantity
+// at price — absolute, so records are idempotent; qty <= 0 removes the level.
+struct level {
+  std::int64_t seq;             // feed sequence number
+  std::int64_t price;           // fixed-point, 1/price_scale of the quote unit
+  std::int64_t qty;             // fixed-point, 1/qty_scale trading units
+  std::int64_t event_ns;        // exchange event time, Unix-epoch nanoseconds
+  std::uint32_t instrument_id;  // mapping is application-defined
+  nlib::side side;              // book side the level sits on; qualified as in order
+  std::int64_t recv_ns;         // local receive time, stamped by the receiving process
+};
+
 struct book {
   std::int64_t event_ns;                // event time of the latest applied event
   std::int64_t bid_price[book_depth];   // best first; fixed-point, 1/price_scale; 0 if unused
@@ -73,6 +86,7 @@ struct metrics {
   std::uint64_t feed_bytes;           // payload bytes of those messages
   std::uint64_t feed_orders;          // decoded order records
   std::uint64_t feed_trades;          // decoded trade records
+  std::uint64_t feed_levels;          // decoded level records
   std::uint64_t feed_dropped;         // messages matching no framing
   std::uint64_t book_events;          // events applied across all books
   std::uint64_t book_apply_ns;        // cumulative latency of the timed applies
@@ -82,11 +96,13 @@ struct metrics {
   std::uint64_t book_memory_bytes;    // gauge: estimated book storage
   std::uint64_t writer_orders;        // order rows appended
   std::uint64_t writer_trades;        // trade rows appended
+  std::uint64_t writer_levels;        // level rows appended
   std::uint64_t writer_books;         // book snapshot rows appended
 };
 
 static_assert(std::is_trivially_copyable_v<order> && std::is_standard_layout_v<order>);
 static_assert(std::is_trivially_copyable_v<trade> && std::is_standard_layout_v<trade>);
+static_assert(std::is_trivially_copyable_v<level> && std::is_standard_layout_v<level>);
 static_assert(std::is_trivially_copyable_v<book> && std::is_standard_layout_v<book>);
 static_assert(std::is_trivially_copyable_v<metrics> && std::is_standard_layout_v<metrics>);
 
@@ -94,7 +110,39 @@ static_assert(std::is_trivially_copyable_v<metrics> && std::is_standard_layout_v
 // little-endian), so any layout drift must fail the build, not the peer.
 static_assert(sizeof(order) == 88);
 static_assert(sizeof(trade) == 64);
+static_assert(sizeof(level) == 48);
 static_assert(sizeof(book) == 344);
-static_assert(sizeof(metrics) == 120);
+static_assert(sizeof(metrics) == 136);
+
+// Framing of a published record: one tag byte, then the record's bytes. A
+// receiver matches the tag against the message size and drops the rest.
+inline constexpr std::uint8_t order_tag = 0;
+inline constexpr std::uint8_t trade_tag = 1;
+inline constexpr std::uint8_t level_tag = 2;
+
+// One record as a feed delivers it.
+using feed_event = std::variant<order, trade, level>;
+
+// One record a book pipeline stores: a feed record or a book snapshot.
+using record = std::variant<order, trade, level, book>;
+
+// Overload set builder for std::visit over feed_event and record: pass
+// lambdas, one per alternative.
+template <typename... Ts>
+struct overloaded : Ts... {
+  using Ts::operator()...;
+};
+
+// One price level of a limit order book, held by the book rather than sent on
+// the wire: the FIFO queue of resting orders at one price, plus their total
+// quantity. An order-backed level links its orders through their prev/next
+// hooks and qty is the queue's sum; an aggregate level (L2 feeds) keeps
+// head == tail == nullptr and qty comes from the feed, so head == nullptr
+// tells the two apart. The owning book maintains both invariants.
+struct price_level {
+  std::int64_t qty = 0;
+  order* head = nullptr;
+  order* tail = nullptr;
+};
 
 }  // namespace nlib

@@ -13,7 +13,7 @@ for the component list.
 
 ```
 include/nlib/*.h      the library — one container per header, no .cpp files
-include/nlib/common.h the wire records: order, trade, book, metrics + shared enums
+include/nlib/common.h the wire records: order, trade, level, book, metrics + framing, variants, price_level
 tests/*_test.cpp      one GoogleTest binary per header
 tests/map_bench.cpp   benchmark, built but not registered with CTest
 CMakeLists.txt        nlib INTERFACE target + nlib::nlib alias
@@ -51,9 +51,12 @@ benchmark needs an optimized build: `./build/tests/map_bench`.
 
 ## `common.h` is not a container
 
-`include/nlib/common.h` holds the wire records (`order`, `trade`, `book`,
-`metrics`) and the constants and enums they are built from. It follows
-different rules from the containers:
+`include/nlib/common.h` holds the wire records (`order`, `trade`, `level`,
+`book`, `metrics`), the constants and enums they are built from, the vocabulary
+a receiver needs to read them — the `order_tag` / `trade_tag` / `level_tag`
+framing bytes, the `feed_event` and `record` variants, and the `overloaded`
+visit helper — and `price_level`, the book node built from those records. It
+follows different rules from the containers:
 
 - **Keep every record trivially copyable and standard layout.** The
   `static_assert`s at the bottom of the file enforce it. That rules out
@@ -70,6 +73,12 @@ different rules from the containers:
 - Only genuinely shared vocabulary belongs here. A type used by exactly one
   consumer stays in that consumer's repository — `nqbook`'s `Node` wrapper was
   deleted rather than promoted, once `order` carried its own list hooks.
+- **`price_level` is the exception to "wire record".** It holds raw `order*`
+  pointers, so it never goes on a wire; it lives here because every book in the
+  stack builds the same node. Its two shapes share one struct: an order-backed
+  level links a FIFO queue through the orders' hooks, an aggregate level keeps
+  `head == nullptr` and takes `qty` from an L2 feed. The owning book maintains
+  both invariants.
 
 ## Adding a container
 
