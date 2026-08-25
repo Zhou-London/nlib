@@ -43,7 +43,7 @@ benchmark needs an optimized build: `./build/tests/map_bench`.
   `single_queue` is). These comments are the documentation; keep them accurate
   when behavior changes.
 - **Comment style**: Google C++ Style Guide, dense and short — the
-  `cpp-comments` skill in `~/.claude/skills` codifies the exact rules used here.
+  `humandoc` skill in `~/.claude/skills` codifies the exact rules used here.
 - Formatting: 2-space indent, 100-column lines, `snake_case` for container
   types and members mirroring the standard library.
 - Prefer removing a component over keeping a weaker duplicate of a standard one
