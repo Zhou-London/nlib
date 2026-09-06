@@ -16,6 +16,8 @@ inline constexpr std::uint8_t trade_tag = 1;
 inline constexpr std::uint8_t level_tag = 2;
 inline constexpr std::uint8_t cancel_tag = 3;
 
+inline constexpr std::uint8_t snapshot_depth = 1;
+
 // ---------- Enum ----------
 enum class side : std::uint8_t { buy, sell };
 enum class order_type : std::uint8_t { limit, market };
@@ -72,10 +74,10 @@ struct level {
 
 struct book {
   std::int64_t event_ns;
-  std::int64_t bid_price[10];
-  std::int64_t bid_qty[10];
-  std::int64_t ask_price[10];
-  std::int64_t ask_qty[10];
+  std::int64_t bid_price[snapshot_depth];
+  std::int64_t bid_qty[snapshot_depth];
+  std::int64_t ask_price[snapshot_depth];
+  std::int64_t ask_qty[snapshot_depth];
   std::uint32_t instrument_id;
   std::int64_t recv_ns;
 };
