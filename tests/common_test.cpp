@@ -12,6 +12,9 @@ TEST(Common, TagsSeparateTheFeedRecords) {
   EXPECT_NE(nlib::order_tag, nlib::trade_tag);
   EXPECT_NE(nlib::order_tag, nlib::level_tag);
   EXPECT_NE(nlib::trade_tag, nlib::level_tag);
+  EXPECT_NE(nlib::cancel_tag, nlib::order_tag);
+  EXPECT_NE(nlib::cancel_tag, nlib::trade_tag);
+  EXPECT_NE(nlib::cancel_tag, nlib::level_tag);
   EXPECT_EQ(sizeof(nlib::order_tag), 1u);
 }
 
@@ -27,6 +30,10 @@ TEST(Common, FeedEventHoldsTheRecordItIsAssigned) {
   event = nlib::level{.price = 5, .qty = 9};
   EXPECT_TRUE(std::holds_alternative<nlib::level>(event));
   EXPECT_EQ(std::get<nlib::level>(event).qty, 9);
+
+  event = nlib::cancel{.order_id = 7, .qty = 2};
+  EXPECT_TRUE(std::holds_alternative<nlib::cancel>(event));
+  EXPECT_EQ(std::get<nlib::cancel>(event).qty, 2);
 }
 
 TEST(Common, RecordAddsTheSnapshotToTheFeedRecords) {
@@ -42,12 +49,14 @@ TEST(Common, OverloadedDispatchesEveryAlternative) {
     return std::visit(nlib::overloaded{[](const nlib::order&) { return std::string("order"); },
                                        [](const nlib::trade&) { return std::string("trade"); },
                                        [](const nlib::level&) { return std::string("level"); },
+                                       [](const nlib::cancel&) { return std::string("cancel"); },
                                        [](const nlib::book&) { return std::string("book"); }},
                       r);
   };
   EXPECT_EQ(name(nlib::order{}), "order");
   EXPECT_EQ(name(nlib::trade{}), "trade");
   EXPECT_EQ(name(nlib::level{}), "level");
+  EXPECT_EQ(name(nlib::cancel{}), "cancel");
   EXPECT_EQ(name(nlib::book{}), "book");
 }
 
@@ -60,6 +69,7 @@ TEST(Common, OverloadedPicksTheCatchAllForUnlistedAlternatives) {
   EXPECT_TRUE(is_trade(nlib::trade{}));
   EXPECT_FALSE(is_trade(nlib::order{}));
   EXPECT_FALSE(is_trade(nlib::level{}));
+  EXPECT_FALSE(is_trade(nlib::cancel{}));
   EXPECT_FALSE(is_trade(nlib::book{}));
 }
 

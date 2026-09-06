@@ -26,57 +26,60 @@ Authors:
 | [`nlib/single_queue.h`](include/nlib/single_queue.h) | `nlib::single_queue<T>` | Bounded lock-free SPSC ring buffer. Capacity rounds up to a power of two at construction; each side owns a cache line holding its counter plus a cached copy of the other side's, so the hot path touches no shared line. |
 | [`nlib/pool.h`](include/nlib/pool.h) | `nlib::pool<T>` | Growable object pool. `emplace()` returns an index handle, `release()` recycles the slot. Handles stay valid until released; growth may move elements, so it invalidates references, never handles. |
 | [`nlib/memory_pool.h`](include/nlib/memory_pool.h) | `nlib::memory_pool` | Fixed-capacity fixed-size-block allocator over one contiguous aligned buffer. The LIFO free list is threaded through the freed blocks themselves, so there is no per-block metadata. |
-| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::trade`, `nlib::level`, `nlib::book`, `nlib::metrics`, `nlib::price_level` | The wire records every component on the feed path agrees on, plus the `side` / `order_type` / `order_action` enums, the `price_scale`, `qty_scale`, and `book_depth` constants, the `order_tag` / `trade_tag` / `level_tag` framing bytes, the `feed_event` and `record` variants over the records, the `overloaded` visit helper, and the `price_level` book node. Not containers — see below. |
+| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::cancel`, `nlib::trade`, `nlib::level`, `nlib::book`, `nlib::metrics`, `nlib::price_level` | The wire records every component on the feed path shares, the `side` / `order_type` / `order_action` enums, the `price_scale` and `qty_scale` constants, the `order_tag` / `trade_tag` / `level_tag` / `cancel_tag` framing bytes, the `feed_event` and `record` variants over the records, the `overloaded` visit helper, and the `price_level` book node. Not containers — see below. |
 
 ### Wire records
 
-`common.h` is the shared vocabulary of the trading stack: an `order`, `trade`,
-or `level` as it arrives from a feed, a `book` holding the top `book_depth`
-(10) price levels per side, and a `metrics` sample of a book pipeline's health.
-It also carries the vocabulary a receiver needs to read those records — the
-framing tags, the `feed_event` and `record` variants, and the `overloaded`
-visit helper — and the `price_level` node a book builds from them. Consumers
-such as [nqbook](https://github.com/Zhou-London/nqbook) include it rather than
-declaring their own copies.
+`common.h` holds the shared vocabulary of the trading stack. Four records
+arrive from a feed: `order`, `cancel`, `trade`, and `level`. `book` holds the
+top ten price levels per side. `metrics` samples a book pipeline's health. The
+header also carries what a receiver needs to read the records: the framing
+tags, the `feed_event` and `record` variants, and the `overloaded` visit
+helper. `price_level` is the node a book builds from the records. Consumers
+such as [nqbook](https://github.com/Zhou-London/nqbook) include this header
+instead of declaring their own copies.
 
-- **Trivially copyable and standard layout**, asserted at compile time — a
-  record can be memcpy'd, mapped into shared memory, or written to a file as is.
-  `static_assert`s also pin the wire sizes (`order` 88, `trade` 64, `level` 48,
-  `book` 344, `metrics` 136), so layout drift fails the build instead of the peer.
-- **Fixed point throughout.** Prices are in units of `1/price_scale` (1e-10) of
-  the quote unit, quantities in `1/qty_scale` (1e-8) trading units — 10 price
-  and 8 lot decimals, enough for every Kraken spot pair. No floating point on
-  the feed path.
-- **Two timestamps, both Unix-epoch nanoseconds**: `event_ns` is the exchange
-  event time, `recv_ns` is stamped by the receiving process, so feed latency is
-  measurable end to end. `book` carries both times of its latest applied event.
-- **`order_action` is what the record does to the book**, and it selects the
-  quantity field that carries the event: `add` rests `qty`, `cancel` takes
-  `cancel_qty` out (the order leaves once nothing remains), `modify` sets the
-  remaining quantity to `new_qty` while keeping queue priority at an unchanged
-  price, and `clear` drops the instrument's resting orders ahead of a snapshot
-  replay. One field per action means a consumer never has to read `qty`
-  against the action to know what it means.
-- **`level` is an L2 record, and it is absolute.** `qty` is the level's new
-  total resting quantity at `price`, not a delta, so a repeated record changes
-  nothing and a lost one is repaired by the next update on that price. A `qty`
-  of 0 or less removes the level.
-- `order` carries `prev` / `next` intrusive list hooks, written by whichever
-  book owns the order, so resting an order costs no separate node allocation.
-- **A feed record arrives framed**: one tag byte (`order_tag` 0, `trade_tag` 1,
-  `level_tag` 2), then the record in host layout. A receiver matches the tag
-  against the message size and drops anything else. `feed_event` is the variant
-  over the three feed records, `record` adds `book` for a pipeline that stores
-  snapshots too, and `overloaded` builds the visitor over either.
-- **`price_level` is book state, not wire data**: the total quantity at one
-  price plus the head and tail of its FIFO order queue, linked through
-  `order`'s hooks. An order-backed level sums its queue; an aggregate level fed
-  by `level` records keeps `head == nullptr` and takes `qty` from the feed, so
-  `head` tells the two apart.
-- **`metrics` is monitoring, not feed data**: cumulative feed/book/writer
-  counters plus timed-apply accumulators and instantaneous book gauges,
-  published unframed on its own socket. Difference consecutive samples for
-  rates.
+- **Every record is trivially copyable and standard layout**, asserted at
+  compile time. A record can be memcpy'd, mapped into shared memory, or
+  written to a file as is.
+- **Prices and quantities are fixed point.** Prices are in units of
+  `1/price_scale` (1e-10) of the quote unit. Quantities are in units of
+  `1/qty_scale` (1e-8) trading units. These scales cover every Kraken spot
+  pair, at 10 price and 8 lot decimals. The feed path carries no floating
+  point.
+- **Every feed record carries two Unix-epoch nanosecond times.** `event_ns` is
+  the exchange event time. `recv_ns` is stamped by the receiving process, so feed
+  latency is measurable end to end. `book` carries both times of its latest
+  applied event.
+- **`order_action` selects the quantity field an `order` record carries.**
+  `add` rests `qty`. `modify` sets the remaining quantity to `new_qty` and
+  keeps queue priority while the price is unchanged. Each action reads one
+  field, so a consumer never interprets `qty` against the action.
+- **`cancel` removes quantity from a resting order.** The record names the
+  `order_id` and the `qty` leaving the book. The order leaves the book once
+  nothing remains, so a full cancel sends the whole remainder as `qty`. A
+  cancel carries no price or order type, so it is its own record instead of an
+  `order_action`.
+- **`level` is an absolute L2 record.** `qty` is the level's new total resting
+  quantity at `price`. A repeated record changes nothing, and the next update
+  on that price repairs a lost one. A `qty` of 0 or less removes the level.
+- **`order` carries `prev` / `next` intrusive list hooks.** The book that owns
+  the order writes them, so resting an order allocates no separate node.
+- **A feed record arrives framed**: one tag byte, then the record in host
+  layout. The tags are `order_tag` 0, `trade_tag` 1, `level_tag` 2, and
+  `cancel_tag` 3. A receiver matches the tag against the message size and
+  drops anything else. `feed_event` is the variant over the four feed records.
+  `record` adds `book`, for a pipeline that stores snapshots too. `overloaded`
+  builds the `std::visit` visitor over either variant.
+- **`price_level` is book state, never wire data.** The node holds the total
+  quantity at one price plus the head and tail of the FIFO order queue, linked
+  through `order`'s hooks. An order-backed level sums its queue. An aggregate
+  level fed by `level` records keeps `head == nullptr` and takes `qty` from
+  the feed, so `head` tells the two apart.
+- **`metrics` is monitoring data, never feed data.** The sample holds
+  cumulative feed, book, and writer counters, timed-apply accumulators, and
+  instantaneous book gauges. A pipeline publishes it unframed on its own
+  socket. Difference consecutive samples for rates.
 
 Shared conventions across the containers:
 

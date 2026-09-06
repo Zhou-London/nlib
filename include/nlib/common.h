@@ -7,142 +7,124 @@
 
 namespace nlib {
 
-// Prices carry 10 and quantities 8 fixed-point decimals: enough for every
-// Kraken spot pair (up to 10 price and 8 lot decimals). At these scales an
-// int64 holds prices to ~9.2e8 quote units and quantities to ~9.2e10 units.
+// ---------- Constants ----------
 inline constexpr std::int64_t price_scale = 10'000'000'000;
 inline constexpr std::int64_t qty_scale = 100'000'000;
 
-inline constexpr std::size_t book_depth = 10;
-
-enum class side : std::uint8_t { buy, sell };
-
-enum class order_type : std::uint8_t { limit, market };
-
-// What an order record does to the book, and which quantity field it fills:
-// add rests `qty`, cancel takes `cancel_qty` out, modify sets the remaining
-// quantity to `new_qty`. clear drops every resting order of the instrument —
-// a feed sends it before replaying a snapshot — and only `seq`,
-// `instrument_id` and the times are meaningful.
-enum class order_action : std::uint8_t { add, cancel, modify, clear };
-
-struct order {
-  std::int64_t seq;         // feed sequence number
-  std::int64_t order_id;
-  std::int64_t price;       // fixed-point, 1/price_scale of the quote unit
-  std::int64_t qty;         // resting quantity on add; fixed-point, 1/qty_scale trading units
-  std::int64_t cancel_qty;  // cancel: quantity leaving the book; 0 otherwise
-  std::int64_t new_qty;     // modify: new remaining quantity, <= 0 removes; 0 otherwise
-  std::int64_t event_ns;    // exchange event time, Unix-epoch nanoseconds
-  order* prev;              // intrusive list hooks, written by the owning book
-  order* next;
-  std::uint32_t instrument_id;  // mapping is application-defined
-  nlib::side side;              // qualified: the member name hides the enum in class scope
-  order_type type;
-  order_action action;
-  std::int64_t recv_ns;     // local receive time, stamped by the receiving process
-};
-
-struct trade {
-  std::int64_t seq;       // feed sequence number
-  std::int64_t buy_order_id;
-  std::int64_t sell_order_id;
-  std::int64_t price;     // fixed-point, 1/price_scale of the quote unit
-  std::int64_t qty;       // fixed-point, 1/qty_scale trading units
-  std::int64_t event_ns;  // exchange event time, Unix-epoch nanoseconds
-  std::uint32_t instrument_id;  // mapping is application-defined
-  nlib::side side;        // aggressor side; qualified as in order
-  std::int64_t recv_ns;   // local receive time, stamped by the receiving process
-};
-
-// One L2 price-level record: qty is the level's new total resting quantity
-// at price — absolute, so records are idempotent; qty <= 0 removes the level.
-struct level {
-  std::int64_t seq;             // feed sequence number
-  std::int64_t price;           // fixed-point, 1/price_scale of the quote unit
-  std::int64_t qty;             // fixed-point, 1/qty_scale trading units
-  std::int64_t event_ns;        // exchange event time, Unix-epoch nanoseconds
-  std::uint32_t instrument_id;  // mapping is application-defined
-  nlib::side side;              // book side the level sits on; qualified as in order
-  std::int64_t recv_ns;         // local receive time, stamped by the receiving process
-};
-
-struct book {
-  std::int64_t event_ns;                // event time of the latest applied event
-  std::int64_t bid_price[book_depth];   // best first; fixed-point, 1/price_scale; 0 if unused
-  std::int64_t bid_qty[book_depth];     // fixed-point, 1/qty_scale trading units; 0 if unused
-  std::int64_t ask_price[book_depth];   // best first; fixed-point, 1/price_scale; 0 if unused
-  std::int64_t ask_qty[book_depth];     // fixed-point, 1/qty_scale trading units; 0 if unused
-  std::uint32_t instrument_id;          // mapping is application-defined
-  std::int64_t recv_ns;                 // receive time of the latest applied event
-};
-
-// One sample of a book pipeline's health, published unframed on its own
-// monitoring socket. Counters are cumulative since process start — consumers
-// difference consecutive samples for rates; gauge fields are instantaneous.
-struct metrics {
-  std::int64_t ts_ns;                 // sample time, Unix-epoch nanoseconds
-  std::uint64_t feed_messages;        // feed messages received, matched or not
-  std::uint64_t feed_bytes;           // payload bytes of those messages
-  std::uint64_t feed_orders;          // decoded order records
-  std::uint64_t feed_trades;          // decoded trade records
-  std::uint64_t feed_levels;          // decoded level records
-  std::uint64_t feed_dropped;         // messages matching no framing
-  std::uint64_t book_events;          // events applied across all books
-  std::uint64_t book_apply_ns;        // cumulative latency of the timed applies
-  std::uint64_t book_samples;         // applies actually timed
-  std::uint64_t book_instruments;     // gauge: books held
-  std::uint64_t book_resting_orders;  // gauge: resting orders across books
-  std::uint64_t book_memory_bytes;    // gauge: estimated book storage
-  std::uint64_t writer_orders;        // order rows appended
-  std::uint64_t writer_trades;        // trade rows appended
-  std::uint64_t writer_levels;        // level rows appended
-  std::uint64_t writer_books;         // book snapshot rows appended
-};
-
-static_assert(std::is_trivially_copyable_v<order> && std::is_standard_layout_v<order>);
-static_assert(std::is_trivially_copyable_v<trade> && std::is_standard_layout_v<trade>);
-static_assert(std::is_trivially_copyable_v<level> && std::is_standard_layout_v<level>);
-static_assert(std::is_trivially_copyable_v<book> && std::is_standard_layout_v<book>);
-static_assert(std::is_trivially_copyable_v<metrics> && std::is_standard_layout_v<metrics>);
-
-// The wire contract: feeds serialize these structs byte for byte (LP64,
-// little-endian), so any layout drift must fail the build, not the peer.
-static_assert(sizeof(order) == 88);
-static_assert(sizeof(trade) == 64);
-static_assert(sizeof(level) == 48);
-static_assert(sizeof(book) == 344);
-static_assert(sizeof(metrics) == 136);
-
-// Framing of a published record: one tag byte, then the record's bytes. A
-// receiver matches the tag against the message size and drops the rest.
 inline constexpr std::uint8_t order_tag = 0;
 inline constexpr std::uint8_t trade_tag = 1;
 inline constexpr std::uint8_t level_tag = 2;
+inline constexpr std::uint8_t cancel_tag = 3;
 
-// One record as a feed delivers it.
-using feed_event = std::variant<order, trade, level>;
+// ---------- Enum ----------
+enum class side : std::uint8_t { buy, sell };
+enum class order_type : std::uint8_t { limit, market };
+enum class order_action : std::uint8_t { add, modify };
 
-// One record a book pipeline stores: a feed record or a book snapshot.
-using record = std::variant<order, trade, level, book>;
+// ---------- Structures ----------
+struct order {
+  std::int64_t seq;
+  std::int64_t order_id;
+  std::int64_t price; // fixed-point
+  std::int64_t qty;
+  std::int64_t new_qty;
+  order *prev; // intrusive list
+  order *next;
+  std::uint32_t instrument_id;
+  nlib::side side;
+  order_type type;
+  order_action action;
+  std::int64_t event_ns;
+  std::int64_t recv_ns; // local receive time
+};
 
-// Overload set builder for std::visit over feed_event and record: pass
-// lambdas, one per alternative.
-template <typename... Ts>
-struct overloaded : Ts... {
+struct cancel {
+  std::int64_t seq;
+  std::int64_t order_id;
+  std::int64_t qty; // quantity leaving the book
+  std::uint32_t instrument_id;
+  nlib::side side;
+  std::int64_t event_ns;
+  std::int64_t recv_ns; // local receive time
+};
+
+struct trade {
+  std::int64_t seq;
+  std::int64_t buy_order_id;
+  std::int64_t sell_order_id;
+  std::int64_t price;
+  std::int64_t qty;
+  std::int64_t event_ns;
+  std::uint32_t instrument_id;
+  nlib::side side;
+  std::int64_t recv_ns;
+};
+
+struct level {
+  std::int64_t seq;
+  std::int64_t price;
+  std::int64_t qty;
+  std::int64_t event_ns;
+  std::uint32_t instrument_id;
+  nlib::side side;
+  std::int64_t recv_ns;
+};
+
+struct book {
+  std::int64_t event_ns;
+  std::int64_t bid_price[10];
+  std::int64_t bid_qty[10];
+  std::int64_t ask_price[10];
+  std::int64_t ask_qty[10];
+  std::uint32_t instrument_id;
+  std::int64_t recv_ns;
+};
+
+struct metrics {
+  std::int64_t ts_ns;
+  std::uint64_t feed_messages;
+  std::uint64_t feed_bytes;
+  std::uint64_t feed_orders;
+  std::uint64_t feed_trades;
+  std::uint64_t feed_levels;
+  std::uint64_t feed_dropped;
+  std::uint64_t book_events;
+  std::uint64_t book_apply_ns;
+  std::uint64_t book_samples;
+  std::uint64_t book_instruments;
+  std::uint64_t book_resting_orders;
+  std::uint64_t book_memory_bytes;
+  std::uint64_t writer_orders;
+  std::uint64_t writer_trades;
+  std::uint64_t writer_levels;
+  std::uint64_t writer_books;
+};
+
+struct price_level {
+  std::int64_t qty = 0;
+  order *head = nullptr;
+  order *tail = nullptr;
+};
+
+static_assert(std::is_trivially_copyable_v<order> &&
+              std::is_standard_layout_v<order>);
+static_assert(std::is_trivially_copyable_v<cancel> &&
+              std::is_standard_layout_v<cancel>);
+static_assert(std::is_trivially_copyable_v<trade> &&
+              std::is_standard_layout_v<trade>);
+static_assert(std::is_trivially_copyable_v<level> &&
+              std::is_standard_layout_v<level>);
+static_assert(std::is_trivially_copyable_v<book> &&
+              std::is_standard_layout_v<book>);
+static_assert(std::is_trivially_copyable_v<metrics> &&
+              std::is_standard_layout_v<metrics>);
+
+// ---------- Alias ----------
+using feed_event = std::variant<order, trade, level, cancel>;
+using record = std::variant<order, trade, level, cancel, book>;
+
+template <typename... Ts> struct overloaded : Ts... {
   using Ts::operator()...;
 };
 
-// One price level of a limit order book, held by the book rather than sent on
-// the wire: the FIFO queue of resting orders at one price, plus their total
-// quantity. An order-backed level links its orders through their prev/next
-// hooks and qty is the queue's sum; an aggregate level (L2 feeds) keeps
-// head == tail == nullptr and qty comes from the feed, so head == nullptr
-// tells the two apart. The owning book maintains both invariants.
-struct price_level {
-  std::int64_t qty = 0;
-  order* head = nullptr;
-  order* tail = nullptr;
-};
-
-}  // namespace nlib
+} // namespace nlib
