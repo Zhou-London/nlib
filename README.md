@@ -1,7 +1,7 @@
 <img src="https://capsule-render.vercel.app/api?type=waving&height=400&text=N-Lib&fontAlign=80&fontAlignY=40&color=gradient" />
 
 <p align="center">
-  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-blue" />
+  <img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-blue" />
   <img alt="C++23" src="https://img.shields.io/badge/C%2B%2B-23-00599C?logo=cplusplus&logoColor=white" />
   <img alt="CMake 3.28+" src="https://img.shields.io/badge/CMake-3.28%2B-064F8C?logo=cmake&logoColor=white" />
   <img alt="Header-only" src="https://img.shields.io/badge/header--only-INTERFACE-4c1" />
@@ -26,18 +26,19 @@ Authors:
 | [`nlib/single_queue.h`](include/nlib/single_queue.h) | `nlib::single_queue<T>` | Bounded lock-free SPSC ring buffer. Capacity rounds up to a power of two at construction; each side owns a cache line holding its counter plus a cached copy of the other side's, so the hot path touches no shared line. |
 | [`nlib/pool.h`](include/nlib/pool.h) | `nlib::pool<T>` | Growable object pool. `emplace()` returns an index handle, `release()` recycles the slot. Handles stay valid until released; growth may move elements, so it invalidates references, never handles. |
 | [`nlib/memory_pool.h`](include/nlib/memory_pool.h) | `nlib::memory_pool` | Fixed-capacity fixed-size-block allocator over one contiguous aligned buffer. The LIFO free list is threaded through the freed blocks themselves, so there is no per-block metadata. |
-| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::cancel`, `nlib::trade`, `nlib::level`, `nlib::book`, `nlib::metrics`, `nlib::price_level` | The wire records every component on the feed path shares, the `side` / `order_type` / `order_action` enums, the `price_scale` and `qty_scale` constants, the `order_tag` / `trade_tag` / `level_tag` / `cancel_tag` framing bytes, the `feed_event` and `record` variants over the records, the `overloaded` visit helper, and the `price_level` book node. Not containers — see below. |
+| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::cancel`, `nlib::trade`, `nlib::level`, `nlib::book`, `nlib::metrics`, `nlib::price_level` | The wire records every component on the feed path shares, the `side` / `order_type` / `order_action` enums, the `price_scale` / `qty_scale` / `snapshot_depth` constants, the `order_tag` / `trade_tag` / `level_tag` / `cancel_tag` framing bytes, the `feed_event` and `record` variants over the records, the `overloaded` visit helper, and the `price_level` book node. Not containers — see below. |
 
 ### Wire records
 
 `common.h` holds the shared vocabulary of the trading stack. Four records
 arrive from a feed: `order`, `cancel`, `trade`, and `level`. `book` holds the
-top ten price levels per side. `metrics` samples a book pipeline's health. The
-header also carries what a receiver needs to read the records: the framing
-tags, the `feed_event` and `record` variants, and the `overloaded` visit
-helper. `price_level` is the node a book builds from the records. Consumers
-such as [nqbook](https://github.com/Zhou-London/nqbook) include this header
-instead of declaring their own copies.
+top `snapshot_depth` price levels per side, one by default. `metrics` samples
+a book pipeline's health. The header also carries what a receiver needs to
+read the records: the framing tags, the `feed_event` and `record` variants,
+and the `overloaded` visit helper. `price_level` is the node a book builds
+from the records. Consumers such as
+[nqbook](https://github.com/Zhou-London/nqbook) include this header instead of
+declaring their own copies.
 
 - **Every record is trivially copyable and standard layout**, asserted at
   compile time. A record can be memcpy'd, mapped into shared memory, or
@@ -63,6 +64,10 @@ instead of declaring their own copies.
 - **`level` is an absolute L2 record.** `qty` is the level's new total resting
   quantity at `price`. A repeated record changes nothing, and the next update
   on that price repairs a lost one. A `qty` of 0 or less removes the level.
+- **`book` holds `snapshot_depth` price levels per side, best first.**
+  `snapshot_depth` defaults to 1, so `book` is a 56-byte top-of-book snapshot.
+  Raising it changes `book`'s size for every consumer, which must rebuild
+  together.
 - **`order` carries `prev` / `next` intrusive list hooks.** The book that owns
   the order writes them, so resting an order allocates no separate node.
 - **A feed record arrives framed**: one tag byte, then the record in host
@@ -137,6 +142,26 @@ allocation per element; lookups are comparable, since a hit costs a probe and a
 key comparison either way.
 
 ## Releases
+
+### v0.5.0 — 2026-09-06
+
+`cancel` becomes a record of its own, and `book` defaults to a top-of-book
+snapshot. Every wire type's layout moves again, so rebuild consumers together.
+
+- **`cancel` carries `order_id` and `qty` directly**, instead of riding
+  `order`'s `cancel_qty` field. `order` drops that field and shrinks from 88
+  to 80 bytes; `cancel` is a new 48-byte record framed by `cancel_tag` (3).
+  `feed_event` and `record` both add it.
+- **`order_action` keeps only `add` and `modify`.** `cancel` and `clear` leave
+  the enum; a full cancel is a `cancel` record whose `qty` is the whole
+  remainder.
+- **`book`'s depth constant is renamed `snapshot_depth` and defaults to 1.**
+  `book` shrinks from 344 to 56 bytes, a top-of-book snapshot rather than a
+  ten-level one. A consumer needing more depth raises the constant and
+  rebuilds.
+- **The header stops asserting each record's exact byte size.** The
+  `is_trivially_copyable` and `is_standard_layout` checks stay; the `sizeof`
+  checks are gone, so a layout change no longer fails the build on its own.
 
 ### v0.4.0 — 2026-08-23
 
