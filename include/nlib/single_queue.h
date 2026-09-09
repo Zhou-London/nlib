@@ -8,6 +8,8 @@
 #include <optional>
 #include <utility>
 
+#include <nlib/common.h>
+
 namespace nlib {
 
 // Bounded single-producer single-consumer FIFO. Storage is one heap array
@@ -96,21 +98,15 @@ class single_queue {
   [[nodiscard]] bool empty() const noexcept { return size() == 0; }
 
  private:
-#ifdef __cpp_lib_hardware_interference_size
-  static constexpr std::size_t cache_line = std::hardware_destructive_interference_size;
-#else
-  static constexpr std::size_t cache_line = 64;
-#endif
-
   const std::uint64_t mask_;  // slot count - 1; slot index is `counter & mask_`
   T* const slots_;
 
   // Consumer-owned cache line.
-  alignas(cache_line) std::atomic<std::uint64_t> head_{0};  // counter of the next element to pop
+  alignas(NLIB_CACHE_LINE) std::atomic<std::uint64_t> head_{0};  // counter of the next element to pop
   std::uint64_t cached_tail_ = 0;  // consumer's snapshot of tail_
 
   // Producer-owned cache line.
-  alignas(cache_line) std::atomic<std::uint64_t> tail_{0};  // counter of the next slot to fill
+  alignas(NLIB_CACHE_LINE) std::atomic<std::uint64_t> tail_{0};  // counter of the next slot to fill
   std::uint64_t cached_head_ = 0;  // producer's snapshot of head_
 };
 

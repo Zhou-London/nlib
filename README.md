@@ -1,7 +1,7 @@
 <img src="https://capsule-render.vercel.app/api?type=waving&height=400&text=N-Lib&fontAlign=80&fontAlignY=40&color=gradient" />
 
 <p align="center">
-  <img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-blue" />
+  <img alt="Version 0.5.1" src="https://img.shields.io/badge/version-0.5.1-blue" />
   <img alt="C++23" src="https://img.shields.io/badge/C%2B%2B-23-00599C?logo=cplusplus&logoColor=white" />
   <img alt="CMake 3.28+" src="https://img.shields.io/badge/CMake-3.28%2B-064F8C?logo=cmake&logoColor=white" />
   <img alt="Header-only" src="https://img.shields.io/badge/header--only-INTERFACE-4c1" />
@@ -142,6 +142,17 @@ allocation per element; lookups are comparable, since a hit costs a probe and a
 key comparison either way.
 
 ## Releases
+
+### v0.5.1 — 2026-09-09
+
+`single_queue`'s cache-line size becomes a macro a consumer can override.
+
+- **`NLIB_CACHE_LINE` replaces the `std::hardware_destructive_interference_size`
+  check.** `common.h` defines it to 64 unless a consumer defines it first;
+  `single_queue`'s two atomic counters align to it instead of a
+  feature-tested constant computed on its own. A consumer that logs or tunes
+  the alignment now has one macro to read instead of duplicating the
+  feature-test.
 
 ### v0.5.0 — 2026-09-06
 

@@ -5,6 +5,12 @@
 #include <type_traits>
 #include <variant>
 
+// ---------- Macros ----------
+// Depends on machine
+#ifndef NLIB_CACHE_LINE
+#define NLIB_CACHE_LINE 64
+#endif
+
 namespace nlib {
 
 // ---------- Constants ----------
