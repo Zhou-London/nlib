@@ -1,7 +1,7 @@
 <img src="https://capsule-render.vercel.app/api?type=waving&height=400&text=N-Lib&fontAlign=80&fontAlignY=40&color=gradient" />
 
 <p align="center">
-  <img alt="Version 0.5.1" src="https://img.shields.io/badge/version-0.5.1-blue" />
+  <img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-blue" />
   <img alt="C++23" src="https://img.shields.io/badge/C%2B%2B-23-00599C?logo=cplusplus&logoColor=white" />
   <img alt="CMake 3.28+" src="https://img.shields.io/badge/CMake-3.28%2B-064F8C?logo=cmake&logoColor=white" />
   <img alt="Header-only" src="https://img.shields.io/badge/header--only-INTERFACE-4c1" />
@@ -26,65 +26,33 @@ Authors:
 | [`nlib/single_queue.h`](include/nlib/single_queue.h) | `nlib::single_queue<T>` | Bounded lock-free SPSC ring buffer. Capacity rounds up to a power of two at construction; each side owns a cache line holding its counter plus a cached copy of the other side's, so the hot path touches no shared line. |
 | [`nlib/pool.h`](include/nlib/pool.h) | `nlib::pool<T>` | Growable object pool. `emplace()` returns an index handle, `release()` recycles the slot. Handles stay valid until released; growth may move elements, so it invalidates references, never handles. |
 | [`nlib/memory_pool.h`](include/nlib/memory_pool.h) | `nlib::memory_pool` | Fixed-capacity fixed-size-block allocator over one contiguous aligned buffer. The LIFO free list is threaded through the freed blocks themselves, so there is no per-block metadata. |
-| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::cancel`, `nlib::trade`, `nlib::level`, `nlib::book`, `nlib::metrics`, `nlib::price_level` | The wire records every component on the feed path shares, the `side` / `order_type` / `order_action` enums, the `price_scale` / `qty_scale` / `snapshot_depth` constants, the `order_tag` / `trade_tag` / `level_tag` / `cancel_tag` framing bytes, the `feed_event` and `record` variants over the records, the `overloaded` visit helper, and the `price_level` book node. Not containers — see below. |
+| [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::level` | The two nodes an order book builds: a resting order with intrusive `prev` / `next` hooks, and a price level holding the total quantity plus the head and tail of its FIFO order queue. Plus the `order_id` / `price_t` / `qty_t` / `ns_t` aliases and the `NLIB_CACHE_LINE` macro. Not containers — see below. |
 
-### Wire records
+### Book nodes
 
-`common.h` holds the shared vocabulary of the trading stack. Four records
-arrive from a feed: `order`, `cancel`, `trade`, and `level`. `book` holds the
-top `snapshot_depth` price levels per side, one by default. `metrics` samples
-a book pipeline's health. The header also carries what a receiver needs to
-read the records: the framing tags, the `feed_event` and `record` variants,
-and the `overloaded` visit helper. `price_level` is the node a book builds
-from the records. Consumers such as
-[nqbook](https://github.com/Zhou-London/nqbook) include this header instead of
-declaring their own copies.
+`common.h` holds the two structs an order book is built from. They are book
+state, never wire data: `level` holds raw `order*` pointers.
 
-- **Every record is trivially copyable and standard layout**, asserted at
-  compile time. A record can be memcpy'd, mapped into shared memory, or
-  written to a file as is.
-- **Prices and quantities are fixed point.** Prices are in units of
-  `1/price_scale` (1e-10) of the quote unit. Quantities are in units of
-  `1/qty_scale` (1e-8) trading units. These scales cover every Kraken spot
-  pair, at 10 price and 8 lot decimals. The feed path carries no floating
-  point.
-- **Every feed record carries two Unix-epoch nanosecond times.** `event_ns` is
-  the exchange event time. `recv_ns` is stamped by the receiving process, so feed
-  latency is measurable end to end. `book` carries both times of its latest
-  applied event.
-- **`order_action` selects the quantity field an `order` record carries.**
-  `add` rests `qty`. `modify` sets the remaining quantity to `new_qty` and
-  keeps queue priority while the price is unchanged. Each action reads one
-  field, so a consumer never interprets `qty` against the action.
-- **`cancel` removes quantity from a resting order.** The record names the
-  `order_id` and the `qty` leaving the book. The order leaves the book once
-  nothing remains, so a full cancel sends the whole remainder as `qty`. A
-  cancel carries no price or order type, so it is its own record instead of an
-  `order_action`.
-- **`level` is an absolute L2 record.** `qty` is the level's new total resting
-  quantity at `price`. A repeated record changes nothing, and the next update
-  on that price repairs a lost one. A `qty` of 0 or less removes the level.
-- **`book` holds `snapshot_depth` price levels per side, best first.**
-  `snapshot_depth` defaults to 1, so `book` is a 56-byte top-of-book snapshot.
-  Raising it changes `book`'s size for every consumer, which must rebuild
-  together.
-- **`order` carries `prev` / `next` intrusive list hooks.** The book that owns
-  the order writes them, so resting an order allocates no separate node.
-- **A feed record arrives framed**: one tag byte, then the record in host
-  layout. The tags are `order_tag` 0, `trade_tag` 1, `level_tag` 2, and
-  `cancel_tag` 3. A receiver matches the tag against the message size and
-  drops anything else. `feed_event` is the variant over the four feed records.
-  `record` adds `book`, for a pipeline that stores snapshots too. `overloaded`
-  builds the `std::visit` visitor over either variant.
-- **`price_level` is book state, never wire data.** The node holds the total
-  quantity at one price plus the head and tail of the FIFO order queue, linked
-  through `order`'s hooks. An order-backed level sums its queue. An aggregate
-  level fed by `level` records keeps `head == nullptr` and takes `qty` from
-  the feed, so `head` tells the two apart.
-- **`metrics` is monitoring data, never feed data.** The sample holds
-  cumulative feed, book, and writer counters, timed-apply accumulators, and
-  instantaneous book gauges. A pipeline publishes it unframed on its own
-  socket. Difference consecutive samples for rates.
+- **`order` is a resting order.** `id`, `price`, `qty`, `ts`, and `side`
+  describe the order; `prev` and `next` link it into its level's FIFO queue;
+  `level` points at the level that holds it. The owning book writes the
+  hooks, so resting an order allocates no separate node.
+- **`level` is one price on one side.** `qty` is the total resting quantity,
+  `count` the number of orders, `head` and `tail` the ends of the FIFO queue
+  linked through the orders' hooks.
+- **Both structs are trivially copyable and standard layout**, asserted at
+  compile time, so a book can keep them in a pool and relocate them by
+  `memcpy`.
+- **`side` is a `std::uint8_t`**: 0 for bid, 1 for ask. The wire record that
+  feeds a book defines the same values; nlib defines no enum of its own.
+- **Prices and quantities are fixed point** (`price_t`, `qty_t`) and times are
+  Unix-epoch nanoseconds (`ns_t`). The scale factors belong to the wire
+  format, not to nlib.
+- **`NLIB_CACHE_LINE`** defaults to 64 and is the alignment `single_queue`
+  uses for its two counters. A consumer may define it first.
+
+The wire records themselves (`mbo` and the plugin ABI) live in nqcppsdk; the
+order book engine that consumes them is nqbook.
 
 Shared conventions across the containers:
 
@@ -142,6 +110,21 @@ allocation per element; lookups are comparable, since a hit costs a probe and a
 key comparison either way.
 
 ## Releases
+
+### v0.6.0 — 2026-10-20
+
+`common.h` keeps only the book nodes. The wire records move to nqcppsdk, so a
+consumer that read `nlib::mbo`, `nlib::side`, or the scale constants from
+here must include the SDK instead.
+
+- **`mbo`, `side`, `action`, `price_scale`, and `qty_scale` are gone.** The
+  SDK's `abi.h` defines `nq_mbo`, `NQ_BID` / `NQ_ASK`, `NQ_ADD` and the other
+  actions, and `NQ_PRICE_SCALE` / `NQ_QTY_SCALE`. One definition serves the
+  adapter, the engine, and the plugins.
+- **`order::side` is a `std::uint8_t`** holding the same 0 / 1 values, so
+  `common.h` depends on nothing outside the standard library.
+- **`common_test` is removed** with the records it covered; `order` and
+  `level` are exercised by the book that owns them.
 
 ### v0.5.1 — 2026-09-09
 

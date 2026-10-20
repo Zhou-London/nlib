@@ -13,7 +13,7 @@ for the component list.
 
 ```
 include/nlib/*.h      the library — one container per header, no .cpp files
-include/nlib/common.h the wire records: order, cancel, trade, level, book, metrics + framing, variants, price_level
+include/nlib/common.h the book nodes: order and level, plus the integer aliases and NLIB_CACHE_LINE
 tests/*_test.cpp      one GoogleTest binary per header
 tests/map_bench.cpp   benchmark, built but not registered with CTest
 CMakeLists.txt        nlib INTERFACE target + nlib::nlib alias
@@ -51,34 +51,24 @@ benchmark needs an optimized build: `./build/tests/map_bench`.
 
 ## `common.h` is not a container
 
-`include/nlib/common.h` holds the wire records (`order`, `cancel`, `trade`,
-`level`, `book`, `metrics`), the constants and enums they are built from, the
-vocabulary a receiver needs to read them — the `order_tag` / `trade_tag` /
-`level_tag` / `cancel_tag` framing bytes, the `feed_event` and `record`
-variants, and the `overloaded` visit helper — and `price_level`, the book node
-built from those records. It follows different rules from the containers:
+`include/nlib/common.h` holds `order` and `level`, the two nodes an order
+book is built from, the `order_id` / `price_t` / `qty_t` / `ns_t` aliases,
+and the `NLIB_CACHE_LINE` macro. It follows different rules from the
+containers:
 
-- **Keep every record trivially copyable and standard layout.** The
+- **Keep both structs trivially copyable and standard layout.** The
   `static_assert`s at the bottom of the file enforce it. That rules out
-  constructors, virtuals, private members, `std::string`, and owning pointers —
-  a record must stay memcpy-able and mappable into shared memory.
-- **A field change is a breaking change for every consumer.** These structs are
-  the interface between the feed, the book, and storage; changing a field's
-  meaning, order, or width breaks anything already reading the layout. Add
-  fields at the end, and say so in the commit body.
-- **Prices and quantities are fixed point**, in units of `1/price_scale` and
-  `1/qty_scale`; times are Unix-epoch nanoseconds, split into `event_ns`
-  (exchange) and `recv_ns` (stamped on receipt). Do not introduce a float on
-  this path.
-- Only genuinely shared vocabulary belongs here. A type used by exactly one
-  consumer stays in that consumer's repository — `nqbook`'s `Node` wrapper was
-  deleted rather than promoted, once `order` carried its own list hooks.
-- **`price_level` is the exception to "wire record".** It holds raw `order*`
-  pointers, so it never goes on a wire; it lives here because every book in the
-  stack builds the same node. Its two shapes share one struct: an order-backed
-  level links a FIFO queue through the orders' hooks, an aggregate level keeps
-  `head == nullptr` and takes `qty` from an L2 feed. The owning book maintains
-  both invariants.
+  constructors, virtuals, private members, and owning pointers — a book keeps
+  these nodes in a pool and relocates them by `memcpy`.
+- **A field change is a breaking change for every book.** Add fields at the
+  end, and say so in the commit body.
+- **Wire records do not belong here.** `mbo`, the side and action values, and
+  the fixed-point scale factors are defined once in nqcppsdk's `abi.h`;
+  `order::side` holds the same 0 / 1 values as a plain `std::uint8_t`. Do not
+  add an enum or a record that would duplicate the SDK.
+- **`level` holds raw `order*` pointers**, so it never goes on a wire. The
+  owning book maintains the FIFO invariants: an order-backed level links its
+  queue through the orders' hooks and sums their quantities.
 
 ## Adding a container
 
