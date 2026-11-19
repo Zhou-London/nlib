@@ -26,6 +26,9 @@ Authors:
 | [`nlib/single_queue.h`](include/nlib/single_queue.h) | `nlib::single_queue<T>` | Bounded lock-free SPSC ring buffer. Capacity rounds up to a power of two at construction; each side owns a cache line holding its counter plus a cached copy of the other side's, so the hot path touches no shared line. |
 | [`nlib/pool.h`](include/nlib/pool.h) | `nlib::pool<T>` | Growable object pool. `emplace()` returns an index handle, `release()` recycles the slot. Handles stay valid until released; growth may move elements, so it invalidates references, never handles. |
 | [`nlib/memory_pool.h`](include/nlib/memory_pool.h) | `nlib::memory_pool` | Fixed-capacity fixed-size-block allocator over one contiguous aligned buffer. The LIFO free list is threaded through the freed blocks themselves, so there is no per-block metadata. |
+| [`nlib/strong_int.h`](include/nlib/strong_int.h) | `nlib::strong_int<Tag, Rep>` | Integer with its own type per tag. Two ids of different tags never convert to each other or to a plain integer, and the wrapper costs nothing at run time. |
+| [`nlib/typed_vector.h`](include/nlib/typed_vector.h) | `nlib::typed_vector<Index, T>` | Dense array indexed only by its own `strong_int` index type. `emplace_back()` returns the index of the new element. |
+| [`nlib/id_table.h`](include/nlib/id_table.h) | `nlib::id_table<Index, Record>` | Records in a `typed_vector` plus a map from each record's permanent `id` to its dense index. |
 | [`nlib/common.h`](include/nlib/common.h) | `nlib::order`, `nlib::level` | The two nodes an order book builds: a resting order with intrusive `prev` / `next` hooks, and a price level holding the total quantity plus the head and tail of its FIFO order queue. Plus the `order_id` / `price_t` / `qty_t` / `ns_t` aliases and the `NLIB_CACHE_LINE` macro. Not containers — see below. |
 
 ### Book nodes

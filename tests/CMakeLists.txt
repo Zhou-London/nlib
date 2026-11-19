@@ -33,3 +33,15 @@ gtest_discover_tests(map_test)
 add_executable(pool_test pool_test.cpp)
 target_link_libraries(pool_test PRIVATE nlib::nlib GTest::gtest_main)
 gtest_discover_tests(pool_test)
+
+add_executable(strong_int_test strong_int_test.cpp)
+target_link_libraries(strong_int_test PRIVATE nlib::nlib GTest::gtest_main)
+gtest_discover_tests(strong_int_test)
+
+add_executable(typed_vector_test typed_vector_test.cpp)
+target_link_libraries(typed_vector_test PRIVATE nlib::nlib GTest::gtest_main)
+gtest_discover_tests(typed_vector_test)
+
+add_executable(id_table_test id_table_test.cpp)
+target_link_libraries(id_table_test PRIVATE nlib::nlib GTest::gtest_main)
+gtest_discover_tests(id_table_test)
