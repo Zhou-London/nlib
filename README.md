@@ -1,7 +1,7 @@
-<p align="center"><img src="https://capsule-render.vercel.app/api?type=soft&height=240&color=gradient&text=N-Lib&fontSize=64&fontAlign=50&fontAlignY=42&desc=v0.6.0&descSize=22&descAlign=50&descAlignY=68" /></p>
+<p align="center"><img src="https://capsule-render.vercel.app/api?type=soft&height=240&color=gradient&text=N-Lib&fontSize=64&fontAlign=50&fontAlignY=42&desc=v0.7.0&descSize=22&descAlign=50&descAlignY=68" /></p>
 
 <p align="center">
-  <img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-blue" />
+  <img alt="Version 0.7.0" src="https://img.shields.io/badge/version-0.7.0-blue" />
   <img alt="C++23" src="https://img.shields.io/badge/C%2B%2B-23-00599C?logo=cplusplus&logoColor=white" />
   <img alt="CMake 3.28+" src="https://img.shields.io/badge/CMake-3.28%2B-064F8C?logo=cmake&logoColor=white" />
   <img alt="Header-only" src="https://img.shields.io/badge/header--only-INTERFACE-4c1" />
@@ -113,6 +113,18 @@ allocation per element; lookups are comparable, since a hit costs a probe and a
 key comparison either way.
 
 ## Releases
+
+### v0.7.0 — 2026-11-19
+
+Three containers for records that live in dense arrays. All three are
+additions, so a v0.6.0 consumer builds unchanged.
+
+- **`strong_int<Tag, Rep>`** wraps an integer in its own type. The compiler
+  rejects a `listing_id` passed where a `venue_id` belongs.
+- **`typed_vector<Index, T>`** is a vector that only its own index type
+  indexes. `emplace_back` returns the index of the new element.
+- **`id_table<Index, Record>`** stores records densely and maps each record's
+  permanent id to its index.
 
 ### v0.6.0 — 2026-10-20
 
